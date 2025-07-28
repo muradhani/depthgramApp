@@ -15,7 +15,7 @@ import org.jetbrains.compose.ui.tooling.preview.Preview
 fun App() {
     MaterialTheme {
         Box(Modifier.fillMaxSize()) {
-            CameraPreview(modifier = Modifier)
+            CameraPreview(modifier = Modifier.fillMaxSize())
         }
     }
 }
