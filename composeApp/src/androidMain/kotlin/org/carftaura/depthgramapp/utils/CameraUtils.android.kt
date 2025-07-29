@@ -5,10 +5,11 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.util.Log
 import android.view.ViewGroup
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
@@ -21,9 +22,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
+import java.io.DataOutputStream
+import java.net.Socket
 
 @Composable
 actual fun CameraPreview(modifier: Modifier) {
@@ -64,7 +66,11 @@ fun AndroidCameraPreview(modifier: Modifier = Modifier) {
                         ViewGroup.LayoutParams.MATCH_PARENT
                     )
                 }
-                startCamera(previewView, ctx, lifecycleOwner)
+                startCamera(
+                    previewView = previewView,
+                    context = ctx,
+                    lifecycleOwner = lifecycleOwner
+                )
                 previewView
             },
             modifier = modifier
@@ -75,8 +81,7 @@ fun AndroidCameraPreview(modifier: Modifier = Modifier) {
 private fun startCamera(
     previewView: PreviewView,
     context: Context,
-    lifecycleOwner: LifecycleOwner
-) {
+    lifecycleOwner: LifecycleOwner) {
     val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
 
     cameraProviderFuture.addListener({
@@ -85,6 +90,16 @@ private fun startCamera(
         val preview = Preview.Builder().build().also {
             it.setSurfaceProvider(previewView.surfaceProvider)
         }
+        val imageAnalysis = ImageAnalysis.Builder()
+            .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+            .build()
+            .also { analysis ->
+                analysis.setAnalyzer(ContextCompat.getMainExecutor(context)) { image ->
+                    val jpegData = image.toJpegByteArray()
+                    sendImageToPC(jpegData)
+                    image.close()
+                }
+            }
 
         val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
 
@@ -93,10 +108,57 @@ private fun startCamera(
             cameraProvider.bindToLifecycle(
                 lifecycleOwner,
                 cameraSelector,
-                preview
+                preview,
+                imageAnalysis
             )
         } catch (e: Exception) {
             Log.e("CameraX", "Use case binding failed", e)
         }
     }, ContextCompat.getMainExecutor(context))
+}
+
+fun ImageProxy.toJpegByteArray(): ByteArray {
+    val yBuffer = planes[0].buffer
+    val uBuffer = planes[1].buffer
+    val vBuffer = planes[2].buffer
+
+    val ySize = yBuffer.remaining()
+    val uSize = uBuffer.remaining()
+    val vSize = vBuffer.remaining()
+
+    val nv21 = ByteArray(ySize + uSize + vSize)
+
+    yBuffer.get(nv21, 0, ySize)
+    vBuffer.get(nv21, ySize, vSize)
+    uBuffer.get(nv21, ySize + vSize, uSize)
+
+    val yuvImage = android.graphics.YuvImage(
+        nv21,
+        android.graphics.ImageFormat.NV21,
+        width,
+        height,
+        null
+    )
+
+    val outputStream = java.io.ByteArrayOutputStream()
+    yuvImage.compressToJpeg(android.graphics.Rect(0, 0, width, height), 80, outputStream)
+
+    return outputStream.toByteArray()
+}
+
+
+
+fun sendImageToPC(data: ByteArray) {
+    Thread {
+        try {
+            val socket = Socket("127.0.0.1", 8080) // ← replace with your PC IP
+            val output = DataOutputStream(socket.getOutputStream())
+            output.writeInt(data.size)  // Send length first
+            output.write(data)          // Then raw bytes
+            output.flush()
+            socket.close()
+        } catch (e: Exception) {
+            Log.e("SocketSend", "Failed to send image", e)
+        }
+    }.start()
 }

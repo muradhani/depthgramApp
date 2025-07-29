@@ -38,6 +38,7 @@ kotlin {
             implementation("androidx.camera:camera-camera2:1.3.1")
             implementation("androidx.camera:camera-view:1.3.1")
             implementation("androidx.camera:camera-extensions:1.3.1")
+            implementation("io.ktor:ktor-client-android:3.2.2")
         }
         commonMain.dependencies {
             implementation(compose.runtime)
@@ -48,6 +49,7 @@ kotlin {
             implementation(compose.components.uiToolingPreview)
             implementation(libs.androidx.lifecycle.viewmodel)
             implementation(libs.androidx.lifecycle.runtimeCompose)
+            implementation("io.ktor:ktor-client-core:3.2.2")
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
