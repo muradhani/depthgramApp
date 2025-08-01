@@ -3,6 +3,7 @@ package org.carftaura.depthgramapp.utils
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.util.Log
 import android.view.ViewGroup
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -24,6 +25,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
+import java.io.ByteArrayOutputStream
 import java.io.DataOutputStream
 import java.net.Socket
 
@@ -36,7 +38,7 @@ actual fun CameraPreview(modifier: Modifier) {
 fun AndroidCameraPreview(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val lifecycleOwner = context as? LifecycleOwner
-
+    val estimator = DepthEstimator()
     var hasPermission by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(
@@ -56,7 +58,7 @@ fun AndroidCameraPreview(modifier: Modifier = Modifier) {
             permissionLauncher.launch(Manifest.permission.CAMERA)
         }
     }
-
+    LaunchedEffect(Unit) { }
     if (hasPermission && lifecycleOwner != null) {
         AndroidView(
             factory = { ctx ->
@@ -69,7 +71,8 @@ fun AndroidCameraPreview(modifier: Modifier = Modifier) {
                 startCamera(
                     previewView = previewView,
                     context = ctx,
-                    lifecycleOwner = lifecycleOwner
+                    lifecycleOwner = lifecycleOwner,
+                    estimator
                 )
                 previewView
             },
@@ -81,7 +84,8 @@ fun AndroidCameraPreview(modifier: Modifier = Modifier) {
 private fun startCamera(
     previewView: PreviewView,
     context: Context,
-    lifecycleOwner: LifecycleOwner) {
+    lifecycleOwner: LifecycleOwner,
+    estimator: DepthEstimator) {
     val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
 
     cameraProviderFuture.addListener({
@@ -95,8 +99,14 @@ private fun startCamera(
             .build()
             .also { analysis ->
                 analysis.setAnalyzer(ContextCompat.getMainExecutor(context)) { image ->
-                    val jpegData = image.toJpegByteArray()
-                    sendImageToPC(jpegData)
+                    val bitmap = image.toBitmap()
+                    if (bitmap != null) {
+                        val depth: Bitmap = estimator.estimateDepth(bitmap)
+                        val stream = ByteArrayOutputStream()
+                        depth.compress(Bitmap.CompressFormat.PNG, 100, stream)
+                        val byteArray: ByteArray = stream.toByteArray()
+                        sendImageToPC(byteArray)
+                    }
                     image.close()
                 }
             }

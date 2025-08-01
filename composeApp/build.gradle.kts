@@ -39,6 +39,9 @@ kotlin {
             implementation("androidx.camera:camera-view:1.3.1")
             implementation("androidx.camera:camera-extensions:1.3.1")
             implementation("io.ktor:ktor-client-android:3.2.2")
+            implementation("org.tensorflow:tensorflow-lite:2.12.0")
+            implementation("org.tensorflow:tensorflow-lite-support:0.4.3")
+            implementation("org.tensorflow:tensorflow-lite-gpu:2.13.0")
         }
         commonMain.dependencies {
             implementation(compose.runtime)
