@@ -102,7 +102,6 @@ private fun startCamera(
             .build()
             .also { analysis ->
                 analysis.setAnalyzer(ContextCompat.getMainExecutor(context)) { image ->
-                    CoroutineScope(Dispatchers.Default).launch {
                     val bitmap = image.toBitmap()
                     val depth: Bitmap = estimator.estimateDepth(bitmap)
                     val stream = ByteArrayOutputStream()
@@ -111,7 +110,6 @@ private fun startCamera(
                     sendImageToPC(byteArray)
                     image.close()
                     }
-                }
             }
 
         val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
