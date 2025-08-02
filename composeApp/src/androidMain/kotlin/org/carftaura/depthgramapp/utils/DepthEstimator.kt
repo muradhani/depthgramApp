@@ -20,6 +20,7 @@ import androidx.core.graphics.set
 
 class DepthEstimator() {
     private val interpreter: Interpreter
+    private lateinit var tensorImage: TensorImage
 
     init {
         val assetManager = AndroidContext.appContext.assets
@@ -45,17 +46,18 @@ class DepthEstimator() {
 
     fun estimateDepth(bitmap: Bitmap): Bitmap {
         val inputSize = 256
-
         val scaledBitmap = bitmap.scale(inputSize, inputSize)
-        val image = TensorImage(DataType.FLOAT32).apply { load(scaledBitmap) }
+        if (!::tensorImage.isInitialized) {
+            tensorImage = TensorImage(DataType.FLOAT32)
+        }
+
+        tensorImage.load(scaledBitmap)
 
         val outputBuffer = ByteBuffer.allocateDirect(4 * inputSize * inputSize).apply {
             order(ByteOrder.nativeOrder())
         }
 
-
-        interpreter.run(image.buffer, outputBuffer)
-
+        interpreter.run(tensorImage.buffer, outputBuffer)
 
         outputBuffer.rewind()
         val depthArray = FloatArray(inputSize * inputSize)
@@ -63,6 +65,7 @@ class DepthEstimator() {
 
         return depthMapToBitmap(depthArray, inputSize, inputSize)
     }
+
 
     private fun depthMapToBitmap(depthArray: FloatArray, width: Int, height: Int): Bitmap {
         val output = createBitmap(width, height)
