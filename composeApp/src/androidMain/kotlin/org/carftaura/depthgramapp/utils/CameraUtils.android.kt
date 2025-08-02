@@ -100,13 +100,11 @@ private fun startCamera(
             .also { analysis ->
                 analysis.setAnalyzer(ContextCompat.getMainExecutor(context)) { image ->
                     val bitmap = image.toBitmap()
-                    if (bitmap != null) {
-                        val depth: Bitmap = estimator.estimateDepth(bitmap)
-                        val stream = ByteArrayOutputStream()
-                        depth.compress(Bitmap.CompressFormat.PNG, 100, stream)
-                        val byteArray: ByteArray = stream.toByteArray()
-                        sendImageToPC(byteArray)
-                    }
+                    val depth: Bitmap = estimator.estimateDepth(bitmap)
+                    val stream = ByteArrayOutputStream()
+                    depth.compress(Bitmap.CompressFormat.PNG, 100, stream)
+                    val byteArray: ByteArray = stream.toByteArray()
+                    sendImageToPC(byteArray)
                     image.close()
                 }
             }
