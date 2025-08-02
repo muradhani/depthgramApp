@@ -5,6 +5,8 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import org.tensorflow.lite.DataType
 import org.tensorflow.lite.Interpreter
+import org.tensorflow.lite.gpu.CompatibilityList
+import org.tensorflow.lite.gpu.GpuDelegate
 import org.tensorflow.lite.support.common.FileUtil
 import org.tensorflow.lite.support.image.TensorImage
 import org.tensorflow.lite.support.tensorbuffer.TensorBuffer
@@ -23,8 +25,20 @@ class DepthEstimator() {
         buffer.order(ByteOrder.nativeOrder())
         buffer.put(model)
         buffer.rewind()
-        interpreter = Interpreter(buffer)
+        val compatList = CompatibilityList()
+
+        val options = Interpreter.Options().apply{
+            if(compatList.isDelegateSupportedOnThisDevice){
+                val delegateOptions = compatList.bestOptionsForThisDevice
+                this.addDelegate(GpuDelegate(delegateOptions))
+            } else {
+                this.setNumThreads(4)
+            }
+        }
+
+        interpreter = Interpreter(buffer, options)
     }
+
 
     fun estimateDepth(bitmap: Bitmap): Bitmap {
         // Preprocess input

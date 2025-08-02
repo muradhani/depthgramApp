@@ -42,6 +42,11 @@ kotlin {
             implementation("org.tensorflow:tensorflow-lite:2.12.0")
             implementation("org.tensorflow:tensorflow-lite-support:0.4.3")
             implementation("org.tensorflow:tensorflow-lite-gpu:2.13.0")
+            implementation("org.tensorflow:tensorflow-lite:+")
+            implementation("org.tensorflow:tensorflow-lite-gpu:+")
+            implementation("org.tensorflow:tensorflow-lite-gpu-api:+")
+            implementation("org.tensorflow:tensorflow-lite-gpu-delegate-plugin:+")
+            implementation("org.tensorflow:tensorflow-lite-support:+")
         }
         commonMain.dependencies {
             implementation(compose.runtime)
