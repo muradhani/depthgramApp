@@ -10,7 +10,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
-import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
@@ -25,9 +24,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import java.io.ByteArrayOutputStream
 import java.io.DataOutputStream
 import java.net.Socket
@@ -128,44 +124,13 @@ private fun startCamera(
     }, ContextCompat.getMainExecutor(context))
 }
 
-fun ImageProxy.toJpegByteArray(): ByteArray {
-    val yBuffer = planes[0].buffer
-    val uBuffer = planes[1].buffer
-    val vBuffer = planes[2].buffer
-
-    val ySize = yBuffer.remaining()
-    val uSize = uBuffer.remaining()
-    val vSize = vBuffer.remaining()
-
-    val nv21 = ByteArray(ySize + uSize + vSize)
-
-    yBuffer.get(nv21, 0, ySize)
-    vBuffer.get(nv21, ySize, vSize)
-    uBuffer.get(nv21, ySize + vSize, uSize)
-
-    val yuvImage = android.graphics.YuvImage(
-        nv21,
-        android.graphics.ImageFormat.NV21,
-        width,
-        height,
-        null
-    )
-
-    val outputStream = java.io.ByteArrayOutputStream()
-    yuvImage.compressToJpeg(android.graphics.Rect(0, 0, width, height), 80, outputStream)
-
-    return outputStream.toByteArray()
-}
-
-
-
 fun sendImageToPC(data: ByteArray) {
     Thread {
         try {
-            val socket = Socket("127.0.0.1", 8080) // ← replace with your PC IP
+            val socket = Socket("127.0.0.1", 8080)
             val output = DataOutputStream(socket.getOutputStream())
-            output.writeInt(data.size)  // Send length first
-            output.write(data)          // Then raw bytes
+            output.writeInt(data.size)
+            output.write(data)
             output.flush()
             socket.close()
         } catch (e: Exception) {
