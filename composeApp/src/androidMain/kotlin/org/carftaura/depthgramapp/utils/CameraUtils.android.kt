@@ -25,6 +25,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import java.io.ByteArrayOutputStream
 import java.io.DataOutputStream
 import java.net.Socket
@@ -99,6 +102,7 @@ private fun startCamera(
             .build()
             .also { analysis ->
                 analysis.setAnalyzer(ContextCompat.getMainExecutor(context)) { image ->
+                    CoroutineScope(Dispatchers.Default).launch {
                     val bitmap = image.toBitmap()
                     val depth: Bitmap = estimator.estimateDepth(bitmap)
                     val stream = ByteArrayOutputStream()
@@ -106,6 +110,7 @@ private fun startCamera(
                     val byteArray: ByteArray = stream.toByteArray()
                     sendImageToPC(byteArray)
                     image.close()
+                    }
                 }
             }
 

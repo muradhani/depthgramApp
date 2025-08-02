@@ -14,6 +14,9 @@ import java.io.FileInputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.channels.FileChannel
+import androidx.core.graphics.scale
+import androidx.core.graphics.createBitmap
+import androidx.core.graphics.set
 
 class DepthEstimator() {
     private val interpreter: Interpreter
@@ -41,42 +44,52 @@ class DepthEstimator() {
 
 
     fun estimateDepth(bitmap: Bitmap): Bitmap {
-        // Preprocess input
-        val inputBuffer = convertBitmapToFloatBuffer(bitmap, 256, 256)
+        val inputSize = 256
 
-        // Prepare output
-        val outputBuffer = ByteBuffer.allocateDirect(4 * 256 * 256)
-        outputBuffer.order(ByteOrder.nativeOrder())
-        interpreter.run(inputBuffer, outputBuffer)
+        val scaledBitmap = bitmap.scale(inputSize, inputSize)
+        val image = TensorImage(DataType.FLOAT32).apply { load(scaledBitmap) }
 
-        // Convert output to float array
+        val outputBuffer = ByteBuffer.allocateDirect(4 * inputSize * inputSize).apply {
+            order(ByteOrder.nativeOrder())
+        }
+
+
+        interpreter.run(image.buffer, outputBuffer)
+
+
         outputBuffer.rewind()
-        val depthArray = FloatArray(256 * 256)
+        val depthArray = FloatArray(inputSize * inputSize)
         outputBuffer.asFloatBuffer().get(depthArray)
 
-        // Convert to visual Bitmap
-        return depthMapToBitmap(depthArray, 256, 256)
+        return depthMapToBitmap(depthArray, inputSize, inputSize)
     }
 
     private fun depthMapToBitmap(depthArray: FloatArray, width: Int, height: Int): Bitmap {
-        val output = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val output = createBitmap(width, height)
 
         val normalized = normalize(depthArray)
+
         for (y in 0 until height) {
             for (x in 0 until width) {
-                val v = (normalized[y * width + x] * 255).toInt().coerceIn(0, 255)
-                val gray = (0xFF shl 24) or (v shl 16) or (v shl 8) or v
-                output.setPixel(x, y, gray)
+                val index = y * width + x
+                val value = (normalized[index] * 255).toInt().coerceIn(0, 255)
+
+                val color = Color.argb(255, value, value, value)
+
+                output[x, y] = color
             }
         }
+
         return output
     }
+
 
     private fun normalize(array: FloatArray): FloatArray {
         val min = array.minOrNull() ?: 0f
         val max = array.maxOrNull() ?: 1f
         return array.map { (it - min) / (max - min + 1e-6f) }.toFloatArray()
     }
+
     private fun convertBitmapToFloatBuffer(bitmap: Bitmap, width: Int, height: Int): ByteBuffer {
         val inputSize = width * height * 3
         val byteBuffer = ByteBuffer.allocateDirect(4 * inputSize)
@@ -98,6 +111,28 @@ class DepthEstimator() {
         byteBuffer.rewind()
         return byteBuffer
     }
+    private fun heatmapColor(v: Int): Triple<Int, Int, Int> {
+        val value = v.coerceIn(0, 255)
 
+        val r = when {
+            value < 128 -> 0
+            value < 192 -> ((value - 128) * 4).coerceIn(0, 255)
+            else -> 255
+        }
+
+        val g = when {
+            value < 64 -> 0
+            value < 192 -> ((value - 64) * 4).coerceIn(0, 255)
+            else -> ((255 - value) * 4).coerceIn(0, 255)
+        }
+
+        val b = when {
+            value < 64 -> 255
+            value < 128 -> ((128 - value) * 4).coerceIn(0, 255)
+            else -> 0
+        }
+
+        return Triple(r, g, b)
+    }
 
 }
