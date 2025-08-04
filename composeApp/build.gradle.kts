@@ -47,6 +47,9 @@ kotlin {
             implementation("org.tensorflow:tensorflow-lite-gpu-api:+")
             implementation("org.tensorflow:tensorflow-lite-gpu-delegate-plugin:+")
             implementation("org.tensorflow:tensorflow-lite-support:+")
+            implementation("com.google.ar:core:1.41.0")
+            implementation(libs.core)
+// or latest version
         }
         commonMain.dependencies {
             implementation(compose.runtime)

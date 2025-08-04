@@ -4,41 +4,27 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.media.Image
 import android.util.Log
-import android.view.ViewGroup
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.camera.core.CameraSelector
-import androidx.camera.core.ImageAnalysis
-import androidx.camera.core.Preview
-import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.camera.view.PreviewView
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.LifecycleOwner
-import java.io.ByteArrayOutputStream
+import com.google.ar.core.Config
+import com.google.ar.core.Session
+import com.google.ar.sceneform.ArSceneView
 import java.io.DataOutputStream
 import java.net.Socket
+import java.nio.ByteBuffer
 
 @Composable
 actual fun CameraPreview(modifier: Modifier) {
-    AndroidCameraPreview()
-}
-
-@Composable
-fun AndroidCameraPreview(modifier: Modifier = Modifier) {
     val context = LocalContext.current
-    val lifecycleOwner = context as? LifecycleOwner
-    val estimator = DepthEstimator()
-    var hasPermission by remember {
+    var session by remember { mutableStateOf<Session?>(null) }
+    var hasCameraPermission by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(
                 context,
@@ -47,81 +33,66 @@ fun AndroidCameraPreview(modifier: Modifier = Modifier) {
         )
     }
     val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        hasPermission = granted
-    }
+        contract = ActivityResultContracts.RequestPermission(),
+        onResult = { granted -> hasCameraPermission = granted }
+    )
 
+    // Request permission
     LaunchedEffect(Unit) {
-        if (!hasPermission) {
+        if (!hasCameraPermission) {
             permissionLauncher.launch(Manifest.permission.CAMERA)
         }
     }
-    LaunchedEffect(Unit) { }
-    if (hasPermission && lifecycleOwner != null) {
-        AndroidView(
-            factory = { ctx ->
-                val previewView = PreviewView(ctx).apply {
-                    layoutParams = ViewGroup.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT
-                    )
+
+    // Initialize ARCore Session
+    LaunchedEffect(hasCameraPermission) {
+        if (hasCameraPermission && session == null) {
+            try {
+                Session(context).also { arSession ->
+                    Config(arSession).apply {
+                        depthMode = Config.DepthMode.AUTOMATIC
+                    }.let { arSession.configure(it) }
+                    session = arSession
                 }
-                startCamera(
-                    previewView = previewView,
-                    context = ctx,
-                    lifecycleOwner = lifecycleOwner,
-                    estimator
-                )
-                previewView
-            },
-            modifier = modifier
+            } catch (e: Exception) {
+                Log.e("ARDepthPreview", "ARCore session setup failed", e)
+            }
+        }
+    }
+
+    if (session != null) {
+        AndroidView(
+            modifier = modifier,
+            factory = { ctx ->
+                ArSceneView(ctx).apply {
+                    setupSession(session!!)
+                    this.scene.addOnUpdateListener {
+                        val frame = this.arFrame ?: return@addOnUpdateListener
+                        try {
+                            val depthImage = frame.acquireDepthImage16Bits()
+                            val centerDepth = getCenterDepth(depthImage)
+                            Log.d("DepthStream", "Center depth: $centerDepth meters")
+                            depthImage.close()
+                        } catch (e: Exception) {
+                            Log.e("DepthStream", "Depth image unavailable", e)
+                        }
+                    }
+                }
+            }
         )
     }
 }
 
-private fun startCamera(
-    previewView: PreviewView,
-    context: Context,
-    lifecycleOwner: LifecycleOwner,
-    estimator: DepthEstimator) {
-    val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
-
-    cameraProviderFuture.addListener({
-        val cameraProvider = cameraProviderFuture.get()
-
-        val preview = Preview.Builder().build().also {
-            it.setSurfaceProvider(previewView.surfaceProvider)
-        }
-        val imageAnalysis = ImageAnalysis.Builder()
-            .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-            .build()
-            .also { analysis ->
-                analysis.setAnalyzer(ContextCompat.getMainExecutor(context)) { image ->
-                    val bitmap = image.toBitmap()
-                    val depth: Bitmap = estimator.estimateDepth(bitmap)
-                    val stream = ByteArrayOutputStream()
-                    depth.compress(Bitmap.CompressFormat.PNG, 100, stream)
-                    val byteArray: ByteArray = stream.toByteArray()
-                    sendImageToPC(byteArray)
-                    image.close()
-                    }
-            }
-
-        val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
-
-        try {
-            cameraProvider.unbindAll()
-            cameraProvider.bindToLifecycle(
-                lifecycleOwner,
-                cameraSelector,
-                preview,
-                imageAnalysis
-            )
-        } catch (e: Exception) {
-            Log.e("CameraX", "Use case binding failed", e)
-        }
-    }, ContextCompat.getMainExecutor(context))
+fun getCenterDepth(image: Image): Float {
+    val width = image.width
+    val height = image.height
+    val centerX = width / 2
+    val centerY = height / 2
+    val buffer: ByteBuffer = image.planes[0].buffer
+    val shortBuffer = buffer.asShortBuffer()
+    val idx = centerY * width + centerX
+    val depthMM = shortBuffer.get(idx).toInt() and 0xFFFF
+    return depthMM / 1000f
 }
 
 fun sendImageToPC(data: ByteArray) {
