@@ -8,9 +8,12 @@ import android.media.Image
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import com.google.ar.core.Config
@@ -32,6 +35,10 @@ actual fun CameraPreview(modifier: Modifier) {
             ) == PackageManager.PERMISSION_GRANTED
         )
     }
+
+    // Used to store and display logs on screen
+    var logText by remember { mutableStateOf("Starting...") }
+
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission(),
         onResult = { granted -> hasCameraPermission = granted }
@@ -53,32 +60,53 @@ actual fun CameraPreview(modifier: Modifier) {
                         depthMode = Config.DepthMode.AUTOMATIC
                     }.let { arSession.configure(it) }
                     session = arSession
+                    logText = "AR session initialized."
                 }
             } catch (e: Exception) {
-                Log.e("ARDepthPreview", "ARCore session setup failed", e)
+                val error = "ARCore session setup failed: ${e.message}"
+                Log.e("ARDepthPreview", error, e)
+                logText = error
             }
         }
     }
 
-    if (session != null) {
-        AndroidView(
-            modifier = modifier,
-            factory = { ctx ->
-                ArSceneView(ctx).apply {
-                    setupSession(session!!)
-                    this.scene.addOnUpdateListener {
-                        val frame = this.arFrame ?: return@addOnUpdateListener
-                        try {
-                            val depthImage = frame.acquireDepthImage16Bits()
-                            val centerDepth = getCenterDepth(depthImage)
-                            Log.d("DepthStream", "Center depth: $centerDepth meters")
-                            depthImage.close()
-                        } catch (e: Exception) {
-                            Log.e("DepthStream", "Depth image unavailable", e)
+    // UI: Camera + Log Text
+    Column(modifier = modifier.fillMaxSize()) {
+        if (session != null) {
+            AndroidView(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                factory = { ctx ->
+                    ArSceneView(ctx).apply {
+                        setupSession(session!!)
+                        this.scene.addOnUpdateListener {
+                            val frame = this.arFrame ?: return@addOnUpdateListener
+                            try {
+                                val depthImage = frame.acquireDepthImage16Bits()
+                                val centerDepth = getCenterDepth(depthImage)
+                                val msg = "Center depth: $centerDepth meters"
+                                Log.d("DepthStream", msg)
+                                logText = msg
+                                depthImage.close()
+                            } catch (e: Exception) {
+                                val err = "Depth image unavailable: ${e.message}"
+                                Log.e("DepthStream", err, e)
+                                logText = err
+                            }
                         }
                     }
                 }
-            }
+            )
+        }
+
+        // Show log message on screen
+        Text(
+            text = logText,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            style = MaterialTheme.typography.bodyLarge
         )
     }
 }
