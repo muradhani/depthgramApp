@@ -86,6 +86,7 @@ actual fun CameraPreview(modifier: Modifier) {
                                 try {
                                     val frame = this.arFrame ?: return@addOnUpdateListener
                                     val depthImage = frame.acquireDepthImage16Bits()
+                                    val confidence = frame.acquireRawDepthConfidenceImage()
                                     val cameraIntrinsics = frame.camera.imageIntrinsics
                                     depthImage.close()
                                 } catch (e: Exception) {
