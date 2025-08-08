@@ -163,3 +163,33 @@ fun sendImageToPC(data: ByteArray) {
         }
     }.start()
 }
+
+
+/**
+ * Returns the depth at a given pixel (x, y) in meters.
+ * @param depthImage The ARCore raw depth image (uint16, mm)
+ * @param px X coordinate (0..width-1)
+ * @param py Y coordinate (0..height-1)
+ * @return Depth in meters, or null if out of bounds or invalid.
+ */
+fun getDepthAtPixel(depthImage: Image, px: Int, py: Int): Float? {
+    val width = depthImage.width
+    val height = depthImage.height
+
+
+    if (px !in 0 until width || py !in 0 until height) {
+        return null
+    }
+
+
+    val depthBuffer = depthImage.planes[0].buffer.asShortBuffer()
+    val index = py * width + px
+    val depthMm = depthBuffer.get(index).toInt() and 0xFFFF
+
+
+    if (depthMm == 0 || depthMm == 65535) {
+        return null
+    }
+
+    return depthMm / 1000f
+}
