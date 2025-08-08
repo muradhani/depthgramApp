@@ -54,7 +54,7 @@ actual fun CameraPreview(modifier: Modifier) {
                 Session(context).also { arSession ->
                     Config(arSession).apply {
                         depthMode = Config.DepthMode.AUTOMATIC
-                        updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE // ✅ Fix for Sceneform
+                        updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
                     }.let { arSession.configure(it) }
                     session = arSession
                     logText = "AR session initialized."
@@ -86,14 +86,7 @@ actual fun CameraPreview(modifier: Modifier) {
                                 try {
                                     val frame = this.arFrame ?: return@addOnUpdateListener
                                     val depthImage = frame.acquireDepthImage16Bits()
-                                    val centerDepth = getCenterDepth(depthImage)
-                                    val msg = if (centerDepth > 0) {
-                                        "Center depth: %.2f meters".format(centerDepth)
-                                    } else {
-                                        "Invalid or unknown depth"
-                                    }
-                                    Log.d("DepthStream", msg)
-                                    logText = msg
+                                    val cameraIntrinsics = frame.camera.imageIntrinsics
                                     depthImage.close()
                                 } catch (e: Exception) {
                                     val err = "Depth image unavailable: ${e.message}"
