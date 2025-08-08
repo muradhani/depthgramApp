@@ -86,7 +86,7 @@ actual fun CameraPreview(modifier: Modifier) {
                                 try {
                                     val frame = this.arFrame ?: return@addOnUpdateListener
                                     val depthImage = frame.acquireDepthImage16Bits()
-                                    val centerDepth = getAverageCenterDepth(depthImage)
+                                    val centerDepth = getCenterDepth(depthImage)
                                     val msg = if (centerDepth > 0) {
                                         "Center depth: %.2f meters".format(centerDepth)
                                     } else {
@@ -142,34 +142,16 @@ actual fun CameraPreview(modifier: Modifier) {
     }
 }
 
-// ✅ 3×3 average with basic filtering (valid: 0.2–10m)
-fun getAverageCenterDepth(image: Image): Float {
+fun getCenterDepth(image: Image): Float {
     val width = image.width
     val height = image.height
     val centerX = width / 2
     val centerY = height / 2
-    val shortBuffer = image.planes[0].buffer.asShortBuffer()
-
-    var sum = 0f
-    var count = 0
-
-    for (dy in -1..1) {
-        for (dx in -1..1) {
-            val x = centerX + dx
-            val y = centerY + dy
-            if (x in 0 until width && y in 0 until height) {
-                val index = y * width + x
-                val depthMM = shortBuffer.get(index).toInt() and 0xFFFF
-                val depthM = depthMM / 1000f
-                if (depthM in 0.2f..10f) { // Only accept reasonable values
-                    sum += depthM
-                    count++
-                }
-            }
-        }
-    }
-
-    return if (count > 0) sum / count else -1f
+    val buffer: ByteBuffer = image.planes[0].buffer
+    val shortBuffer = buffer.asShortBuffer()
+    val idx = centerY * width + centerX
+    val depthMM = shortBuffer.get(idx).toInt() and 0xFFFF
+    return depthMM / 1000f
 }
 
 // Optional: socket function (unused here)
