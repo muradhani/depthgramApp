@@ -136,19 +136,6 @@ actual fun CameraPreview(modifier: Modifier) {
     }
 }
 
-fun getCenterDepth(image: Image): Float {
-    val width = image.width
-    val height = image.height
-    val centerX = width / 2
-    val centerY = height / 2
-    val buffer: ByteBuffer = image.planes[0].buffer
-    val shortBuffer = buffer.asShortBuffer()
-    val idx = centerY * width + centerX
-    val depthMM = shortBuffer.get(idx).toInt() and 0xFFFF
-    return depthMM / 1000f
-}
-
-// Optional: socket function (unused here)
 fun sendImageToPC(data: ByteArray) {
     Thread {
         try {
