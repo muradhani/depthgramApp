@@ -14,12 +14,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import com.google.ar.core.CameraIntrinsics
 import com.google.ar.core.Config
 import com.google.ar.core.Session
 import com.google.ar.sceneform.ArSceneView
 import java.io.DataOutputStream
 import java.net.Socket
-import java.nio.ByteBuffer
 
 @Composable
 actual fun CameraPreview(modifier: Modifier) {
@@ -86,8 +86,14 @@ actual fun CameraPreview(modifier: Modifier) {
                                 try {
                                     val frame = this.arFrame ?: return@addOnUpdateListener
                                     val depthImage = frame.acquireDepthImage16Bits()
-                                    val confidence = frame.acquireRawDepthConfidenceImage()
-                                    val cameraIntrinsics = frame.camera.imageIntrinsics
+                                    val thisFrameHasNewDepthData = frame.timestamp == depthImage.timestamp
+                                    if (thisFrameHasNewDepthData) {
+                                        val confidenceMap = frame.acquireRawDepthConfidenceImage()
+                                        val cameraIntrinsics = frame.camera.imageIntrinsics
+                                        val width = depthImage.width
+                                        val height = depthImage.height
+                                        integrateNewImage(confidenceMap,cameraIntrinsics,width,height)
+                                    }
                                     depthImage.close()
                                 } catch (e: Exception) {
                                     val err = "Depth image unavailable: ${e.message}"
@@ -136,6 +142,14 @@ actual fun CameraPreview(modifier: Modifier) {
     }
 }
 
+fun integrateNewImage(
+    confidenceMap: Image,
+    cameraIntrinsics: CameraIntrinsics,
+    width: Int,
+    height: Int
+) {
+
+}
 fun sendImageToPC(data: ByteArray) {
     Thread {
         try {
@@ -179,4 +193,8 @@ fun getDepthAtPixel(depthImage: Image, px: Int, py: Int): Float? {
     }
 
     return depthMm / 1000f
+}
+
+fun calculateConfidence(){
+
 }
