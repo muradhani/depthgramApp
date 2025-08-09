@@ -40,6 +40,9 @@ actual fun CameraPreview(modifier: Modifier) {
         onResult = { granted -> hasCameraPermission = granted }
     )
 
+    var latestDepthImage by remember { mutableStateOf<Image?>(null) }
+    var latestConfidenceImage by remember { mutableStateOf<Image?>(null) }
+
     // Request permission
     LaunchedEffect(Unit) {
         if (!hasCameraPermission) {
@@ -81,20 +84,36 @@ actual fun CameraPreview(modifier: Modifier) {
                         ArSceneView(ctx).apply {
                             setupSession(session!!)
                             arSceneView = this
+                            this.setOnTouchListener { _, event ->
+                                if (event.action == android.view.MotionEvent.ACTION_DOWN) {
+                                    val depth = latestDepthImage
+                                    val conf = latestConfidenceImage
+                                    if (depth != null && conf != null) {
+                                        val imageX = (event.x / this.width * depth.width).toInt()
+                                        val imageY = (event.y / this.height * depth.height).toInt()
 
+                                        val result = getDepthAndConfidenceAtPixel(depth, conf, imageX, imageY)
+                                        logText = if (result != null) {
+                                            "Depth: %.2f m, Confidence: %s".format(result.first, result.second)
+                                        } else {
+                                            "No depth data at this pixel"
+                                        }
+                                    } else {
+                                        logText = "No depth image available"
+                                    }
+                                }
+                                true
+                            }
                             this.scene.addOnUpdateListener {
                                 try {
                                     val frame = this.arFrame ?: return@addOnUpdateListener
                                     val depthImage = frame.acquireDepthImage16Bits()
-                                    val thisFrameHasNewDepthData = frame.timestamp == depthImage.timestamp
-                                    if (thisFrameHasNewDepthData) {
-                                        val confidenceMap = frame.acquireRawDepthConfidenceImage()
-                                        val cameraIntrinsics = frame.camera.imageIntrinsics
-                                        val width = depthImage.width
-                                        val height = depthImage.height
-                                        integrateNewImage(confidenceMap,cameraIntrinsics,width,height)
-                                    }
-                                    depthImage.close()
+                                    val confidenceMap = frame.acquireRawDepthConfidenceImage()
+
+                                    latestDepthImage?.close()
+                                    latestConfidenceImage?.close()
+                                    latestDepthImage = depthImage
+                                    latestConfidenceImage = confidenceMap
                                 } catch (e: Exception) {
                                     val err = "Depth image unavailable: ${e.message}"
                                     Log.e("DepthStream", err, e)
