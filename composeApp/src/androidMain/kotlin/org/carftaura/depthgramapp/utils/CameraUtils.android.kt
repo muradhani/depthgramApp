@@ -165,36 +165,44 @@ fun sendImageToPC(data: ByteArray) {
     }.start()
 }
 
-
 /**
- * Returns the depth at a given pixel (x, y) in meters.
- * @param depthImage The ARCore raw depth image (uint16, mm)
- * @param px X coordinate (0..width-1)
- * @param py Y coordinate (0..height-1)
- * @return Depth in meters, or null if out of bounds or invalid.
+ * Returns the depth (in meters) and confidence at a given pixel (x, y).
+ *
+ * @param depthImage ARCore raw depth image (uint16, mm).
+ * @param confidenceImage ARCore raw depth confidence image (uint8).
+ * @param px X coordinate (0..width-1).
+ * @param py Y coordinate (0..height-1).
+ * @return Pair(depthMeters, confidenceLevel) or null if invalid pixel.
  */
-fun getDepthAtPixel(depthImage: Image, px: Int, py: Int): Float? {
+fun getDepthAndConfidenceAtPixel(
+    depthImage: Image,
+    confidenceImage: Image,
+    px: Int,
+    py: Int
+): Pair<Float, String>? {
     val width = depthImage.width
     val height = depthImage.height
-
-
     if (px !in 0 until width || py !in 0 until height) {
         return null
     }
-
-
     val depthBuffer = depthImage.planes[0].buffer.asShortBuffer()
     val index = py * width + px
     val depthMm = depthBuffer.get(index).toInt() and 0xFFFF
-
 
     if (depthMm == 0 || depthMm == 65535) {
         return null
     }
 
-    return depthMm / 1000f
-}
+    val depthMeters = depthMm / 1000f
 
-fun calculateConfidence(){
+    val confBuffer = confidenceImage.planes[0].buffer
+    val confVal = confBuffer.get(index).toInt() and 0xFF
+    val confidenceLevel = when {
+        confVal in 0..85 -> "Low"
+        confVal in 86..170 -> "Medium"
+        confVal in 171..255 -> "High"
+        else -> "Unknown"
+    }
 
+    return depthMeters to confidenceLevel
 }
