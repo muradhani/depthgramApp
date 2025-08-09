@@ -1,6 +1,7 @@
 package org.carftaura.depthgramapp.utils
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.pm.PackageManager
 import android.media.Image
 import android.util.Log
@@ -16,11 +17,13 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import com.google.ar.core.CameraIntrinsics
 import com.google.ar.core.Config
+import com.google.ar.core.Frame
 import com.google.ar.core.Session
 import com.google.ar.sceneform.ArSceneView
 import java.io.DataOutputStream
 import java.net.Socket
 
+@SuppressLint("ClickableViewAccessibility")
 @Composable
 actual fun CameraPreview(modifier: Modifier) {
     val context = LocalContext.current
@@ -42,7 +45,7 @@ actual fun CameraPreview(modifier: Modifier) {
 
     var latestDepthImage by remember { mutableStateOf<Image?>(null) }
     var latestConfidenceImage by remember { mutableStateOf<Image?>(null) }
-
+    var latestFrame by remember { mutableStateOf<Frame?>(null) }
     // Request permission
     LaunchedEffect(Unit) {
         if (!hasCameraPermission) {
@@ -90,20 +93,12 @@ actual fun CameraPreview(modifier: Modifier) {
                             arSceneView = this
                             this.setOnTouchListener { _, event ->
                                 if (event.action == android.view.MotionEvent.ACTION_DOWN) {
-                                    val depth = latestDepthImage
-                                    val conf = latestConfidenceImage
-                                    if (depth != null && conf != null) {
-                                        val imageX = (event.x / this.width * depth.width).toInt()
-                                        val imageY = (event.y / this.height * depth.height).toInt()
-
-                                        val result = getDepthAndConfidenceAtPixel(depth, conf, imageX, imageY)
-                                        logText = if (result != null) {
-                                            "Depth: %.2f m, Confidence: %s".format(result.first, result.second)
-                                        } else {
-                                            "No depth data at this pixel"
-                                        }
-                                    } else {
-                                        logText = "No depth image available"
+                                    val hits = latestFrame?.hitTest(event.x, event.y)
+                                    if (!hits.isNullOrEmpty()) {
+                                        val hit = hits[0]
+                                        val distanceMeters = hit.distance
+                                        val hitPose = hit.hitPose
+                                        logText="Distance: $distanceMeters m, Pose: $hitPose"
                                     }
                                 }
                                 true
@@ -113,7 +108,7 @@ actual fun CameraPreview(modifier: Modifier) {
                                     val frame = this.arFrame ?: return@addOnUpdateListener
                                     val depthImage = frame.acquireDepthImage16Bits()
                                     val confidenceMap = frame.acquireRawDepthConfidenceImage()
-
+                                    latestFrame = frame
                                     latestDepthImage?.close()
                                     latestConfidenceImage?.close()
                                     latestDepthImage = depthImage
