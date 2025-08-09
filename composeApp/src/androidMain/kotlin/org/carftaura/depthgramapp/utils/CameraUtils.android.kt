@@ -58,6 +58,9 @@ actual fun CameraPreview(modifier: Modifier) {
                     Config(arSession).apply {
                         depthMode = Config.DepthMode.AUTOMATIC
                         updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
+                        focusMode = Config.FocusMode.AUTO
+                        instantPlacementMode = Config.InstantPlacementMode.LOCAL_Y_UP
+                        planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
                     }.let { arSession.configure(it) }
                     session = arSession
                     logText = "AR session initialized."
@@ -83,6 +86,7 @@ actual fun CameraPreview(modifier: Modifier) {
                     try {
                         ArSceneView(ctx).apply {
                             setupSession(session!!)
+                            resume()
                             arSceneView = this
                             this.setOnTouchListener { _, event ->
                                 if (event.action == android.view.MotionEvent.ACTION_DOWN) {
