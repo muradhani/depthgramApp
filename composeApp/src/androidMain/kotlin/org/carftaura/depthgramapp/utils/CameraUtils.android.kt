@@ -96,6 +96,10 @@ actual fun CameraPreview(modifier: Modifier) {
                             }
                             true
                         }
+                        this.scene.addOnUpdateListener {
+                            val frame = this.arFrame ?: return@addOnUpdateListener
+                            frame.camera.imageIntrinsics
+                        }
                     }
                 }
             )
