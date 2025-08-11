@@ -3,7 +3,6 @@ package org.carftaura.depthgramapp.utils
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.pm.PackageManager
-import android.media.Image
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -15,7 +14,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
-import com.google.ar.core.CameraIntrinsics
 import com.google.ar.core.Config
 import com.google.ar.core.Frame
 import com.google.ar.core.Session
@@ -36,15 +34,11 @@ actual fun CameraPreview(modifier: Modifier) {
             ) == PackageManager.PERMISSION_GRANTED
         )
     }
-
     var logText by remember { mutableStateOf("Starting...") }
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission(),
         onResult = { granted -> hasCameraPermission = granted }
     )
-
-    var latestDepthImage by remember { mutableStateOf<Image?>(null) }
-    var latestConfidenceImage by remember { mutableStateOf<Image?>(null) }
     var latestFrame by remember { mutableStateOf<Frame?>(null) }
     // Request permission
     LaunchedEffect(Unit) {
@@ -86,67 +80,25 @@ actual fun CameraPreview(modifier: Modifier) {
                     .weight(1f)
                     .fillMaxWidth(),
                 factory = { ctx ->
-                    try {
-                        ArSceneView(ctx).apply {
-                            setupSession(session!!)
-                            resume()
-                            arSceneView = this
-                            this.setOnTouchListener { _, event ->
-                                if (event.action == android.view.MotionEvent.ACTION_DOWN) {
-                                    val hits = latestFrame?.hitTest(event.x, event.y)
-                                    if (!hits.isNullOrEmpty()) {
-                                        val hit = hits[0]
-                                        val distanceMeters = hit.distance
-                                        val hitPose = hit.hitPose
-                                        logText="Distance: $distanceMeters m, Pose: $hitPose"
-                                    }
-                                }
-                                true
-                            }
-                            this.scene.addOnUpdateListener {
-                                try {
-                                    val frame = this.arFrame ?: return@addOnUpdateListener
-                                    val depthImage = frame.acquireDepthImage16Bits()
-                                    val confidenceMap = frame.acquireRawDepthConfidenceImage()
-                                    latestFrame = frame
-                                    latestDepthImage?.close()
-                                    latestConfidenceImage?.close()
-                                    latestDepthImage = depthImage
-                                    latestConfidenceImage = confidenceMap
-                                } catch (e: Exception) {
-                                    val err = "Depth image unavailable: ${e.message}"
-                                    Log.e("DepthStream", err, e)
-                                    logText = err
+                    ArSceneView(ctx).apply {
+                        setupSession(session!!)
+                        resume()
+                        arSceneView = this
+                        this.setOnTouchListener { _, event ->
+                            if (event.action == android.view.MotionEvent.ACTION_DOWN) {
+                                val hits = latestFrame?.hitTest(event.x, event.y)
+                                if (!hits.isNullOrEmpty()) {
+                                    val hit = hits[0]
+                                    val distanceMeters = hit.distance
+                                    val hitPose = hit.hitPose
+                                    logText = "Distance: $distanceMeters m, Pose: $hitPose"
                                 }
                             }
+                            true
                         }
-                    } catch (e: Exception) {
-                        val err = "ArSceneView failed: ${e.message}"
-                        Log.e("ARDepthPreview", err, e)
-                        logText = err
-                        ArSceneView(ctx)
                     }
                 }
             )
-
-            // Proper lifecycle handling
-            DisposableEffect(Unit) {
-                try {
-                    arSceneView?.resume()
-                } catch (e: Exception) {
-                    val err = "Failed to resume AR view: ${e.message}"
-                    Log.e("ARDepthPreview", err, e)
-                    logText = err
-                }
-
-                onDispose {
-                    try {
-                        arSceneView?.pause()
-                    } catch (e: Exception) {
-                        Log.e("ARDepthPreview", "Pause failed", e)
-                    }
-                }
-            }
         }
 
         // Display logs on screen
@@ -160,14 +112,6 @@ actual fun CameraPreview(modifier: Modifier) {
     }
 }
 
-fun integrateNewImage(
-    confidenceMap: Image,
-    cameraIntrinsics: CameraIntrinsics,
-    width: Int,
-    height: Int
-) {
-
-}
 fun sendImageToPC(data: ByteArray) {
     Thread {
         try {
@@ -181,46 +125,4 @@ fun sendImageToPC(data: ByteArray) {
             Log.e("SocketSend", "Failed to send image", e)
         }
     }.start()
-}
-
-/**
- * Returns the depth (in meters) and confidence at a given pixel (x, y).
- *
- * @param depthImage ARCore raw depth image (uint16, mm).
- * @param confidenceImage ARCore raw depth confidence image (uint8).
- * @param px X coordinate (0..width-1).
- * @param py Y coordinate (0..height-1).
- * @return Pair(depthMeters, confidenceLevel) or null if invalid pixel.
- */
-fun getDepthAndConfidenceAtPixel(
-    depthImage: Image,
-    confidenceImage: Image,
-    px: Int,
-    py: Int
-): Pair<Float, String>? {
-    val width = depthImage.width
-    val height = depthImage.height
-    if (px !in 0 until width || py !in 0 until height) {
-        return null
-    }
-    val depthBuffer = depthImage.planes[0].buffer.asShortBuffer()
-    val index = py * width + px
-    val depthMm = depthBuffer.get(index).toInt() and 0xFFFF
-
-    if (depthMm == 0 || depthMm == 65535) {
-        return null
-    }
-
-    val depthMeters = depthMm / 1000f
-
-    val confBuffer = confidenceImage.planes[0].buffer
-    val confVal = confBuffer.get(index).toInt() and 0xFF
-    val confidenceLevel = when {
-        confVal in 0..85 -> "Low"
-        confVal in 86..170 -> "Medium"
-        confVal in 171..255 -> "High"
-        else -> "Unknown"
-    }
-
-    return depthMeters to confidenceLevel
 }
