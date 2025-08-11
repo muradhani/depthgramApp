@@ -3,6 +3,12 @@ package org.carftaura.depthgramapp.utils
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.ImageFormat
+import android.graphics.Rect
+import android.graphics.YuvImage
+import android.media.Image
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -18,8 +24,11 @@ import com.google.ar.core.Config
 import com.google.ar.core.Frame
 import com.google.ar.core.Session
 import com.google.ar.sceneform.ArSceneView
+import java.io.ByteArrayOutputStream
 import java.io.DataOutputStream
 import java.net.Socket
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 
 @SuppressLint("ClickableViewAccessibility")
 @Composable
@@ -40,6 +49,7 @@ actual fun CameraPreview(modifier: Modifier) {
         onResult = { granted -> hasCameraPermission = granted }
     )
     var latestFrame by remember { mutableStateOf<Frame?>(null) }
+
     // Request permission
     LaunchedEffect(Unit) {
         if (!hasCameraPermission) {
@@ -98,14 +108,47 @@ actual fun CameraPreview(modifier: Modifier) {
                         }
                         this.scene.addOnUpdateListener {
                             val frame = this.arFrame ?: return@addOnUpdateListener
-                            frame.camera.imageIntrinsics
+                            latestFrame = frame
+
+                            // Get camera intrinsics
+                            val intrinsics = frame.camera.imageIntrinsics
+                            val fx = intrinsics.focalLength[0]
+                            val fy = intrinsics.focalLength[1]
+                            val cx = intrinsics.principalPoint[0]
+                            val cy = intrinsics.principalPoint[1]
+                            val width = intrinsics.imageDimensions[0]
+                            val height = intrinsics.imageDimensions[1]
+
+                            // Get camera image and convert to JPEG
+                            val cameraImage = frame.acquireCameraImage()
+                            try {
+                                val jpegData = convertYuvToJpeg(cameraImage, 50)
+                                if (jpegData != null) {
+                                    // Create combined data: [intrinsics] + [jpeg]
+                                    val intrinsicsData = ByteArray(24).apply {
+                                        val buffer = ByteBuffer.wrap(this)
+                                            .order(ByteOrder.LITTLE_ENDIAN)
+                                        buffer.putFloat(fx)
+                                        buffer.putFloat(fy)
+                                        buffer.putFloat(cx)
+                                        buffer.putFloat(cy)
+                                        buffer.putInt(width)
+                                        buffer.putInt(height)
+                                    }
+
+                                    val combinedData = intrinsicsData + jpegData
+                                    sendImageToPC(combinedData)
+                                }
+                            } catch (e: Exception) {
+                                Log.e("CameraPreview", "Error processing frame: ${e.message}")
+                            } finally {
+                                cameraImage.close()
+                            }
                         }
                     }
                 }
             )
         }
-
-        // Display logs on screen
         Text(
             text = logText,
             modifier = Modifier
@@ -113,6 +156,49 @@ actual fun CameraPreview(modifier: Modifier) {
                 .padding(16.dp),
             style = MaterialTheme.typography.bodyLarge
         )
+    }
+}
+
+private fun convertYuvToJpeg(image: Image, quality: Int): ByteArray? {
+    return try {
+        val planes = image.planes
+        val yBuffer = planes[0].buffer
+        val uBuffer = planes[1].buffer
+        val vBuffer = planes[2].buffer
+
+        val ySize = yBuffer.remaining()
+        val uSize = uBuffer.remaining()
+        val vSize = vBuffer.remaining()
+
+        val nv21 = ByteArray(ySize + uSize + vSize)
+        yBuffer.get(nv21, 0, ySize)
+        vBuffer.get(nv21, ySize, vSize)
+        uBuffer.get(nv21, ySize + vSize, uSize)
+
+        val yuvImage = YuvImage(
+            nv21, ImageFormat.NV21,
+            image.width, image.height, null
+        )
+
+        val out = ByteArrayOutputStream()
+        yuvImage.compressToJpeg(
+            Rect(0, 0, image.width, image.height),
+            quality,
+            out
+        )
+        val options = BitmapFactory.Options().apply {
+            inSampleSize = 2
+        }
+        val scaledBitmap = BitmapFactory.decodeByteArray(
+            out.toByteArray(), 0, out.size(), options
+        )
+        val scaledOut = ByteArrayOutputStream()
+        scaledBitmap?.compress(Bitmap.CompressFormat.JPEG, quality, scaledOut)
+
+        scaledOut.toByteArray()
+    } catch (e: Exception) {
+        Log.e("ImageConvert", "YUV to JPEG failed", e)
+        null
     }
 }
 
