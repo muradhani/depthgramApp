@@ -1,7 +1,9 @@
 package org.carftaura.depthgramapp.utils
 
 import android.Manifest
+import android.R.id.input
 import android.annotation.SuppressLint
+import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -30,6 +32,9 @@ import java.net.Socket
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
+
+private var globalLatestFrame: Frame? = null
+
 @SuppressLint("ClickableViewAccessibility")
 @Composable
 actual fun CameraPreview(modifier: Modifier) {
@@ -49,6 +54,11 @@ actual fun CameraPreview(modifier: Modifier) {
         onResult = { granted -> hasCameraPermission = granted }
     )
     var latestFrame by remember { mutableStateOf<Frame?>(null) }
+
+
+    LaunchedEffect(latestFrame) {
+        globalLatestFrame = latestFrame
+    }
 
     // Request permission
     LaunchedEffect(Unit) {
@@ -209,10 +219,32 @@ fun sendImageToPC(data: ByteArray) {
             val output = DataOutputStream(socket.getOutputStream())
             output.writeInt(data.size)
             output.write(data)
+
+            while (!socket.isClosed) {
+                val msgType = input
+
+                if (msgType == 3) {
+                    val x = input
+                    val y = input
+                    println("📍 Click from desktop: $x, $y")
+
+
+                    val distance = getDistanceAtPixel(x, y)
+
+
+                    output.writeInt(2)
+                    output.writeFloat(distance!!)
+                    output.flush()
+                }
+            }
             output.flush()
             socket.close()
         } catch (e: Exception) {
             Log.e("SocketSend", "Failed to send image", e)
         }
     }.start()
+}
+
+fun getDistanceAtPixel(x: Int, y: Int): Float? {
+    return globalLatestFrame?.hitTest(x.toFloat(), y.toFloat())[0]?.distance
 }
