@@ -3,7 +3,6 @@ package org.carftaura.depthgramapp.utils
 import android.Manifest
 import android.R.id.input
 import android.annotation.SuppressLint
-import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -25,6 +24,7 @@ import androidx.core.content.ContextCompat
 import com.google.ar.core.Config
 import com.google.ar.core.Frame
 import com.google.ar.core.Session
+import com.google.ar.core.TrackingState
 import com.google.ar.sceneform.ArSceneView
 import java.io.ByteArrayOutputStream
 import java.io.DataOutputStream
@@ -128,32 +128,34 @@ actual fun CameraPreview(modifier: Modifier) {
                             val cy = intrinsics.principalPoint[1]
                             val width = intrinsics.imageDimensions[0]
                             val height = intrinsics.imageDimensions[1]
-
-                            // Get camera image and convert to JPEG
-                            val cameraImage = frame.acquireCameraImage()
                             try {
-                                val jpegData = convertYuvToJpeg(cameraImage, 50)
-                                if (jpegData != null) {
-                                    // Create combined data: [intrinsics] + [jpeg]
-                                    val intrinsicsData = ByteArray(24).apply {
-                                        val buffer = ByteBuffer.wrap(this)
-                                            .order(ByteOrder.LITTLE_ENDIAN)
-                                        buffer.putFloat(fx)
-                                        buffer.putFloat(fy)
-                                        buffer.putFloat(cx)
-                                        buffer.putFloat(cy)
-                                        buffer.putInt(width)
-                                        buffer.putInt(height)
-                                    }
+                                if (frame.camera.trackingState == TrackingState.PAUSED) {
 
-                                    val combinedData = intrinsicsData + jpegData
-                                    sendImageToPC(combinedData)
+                                    frame.acquireCameraImage().use { cameraImage ->  // <-- use{} ensures close()
+
+                                        val jpegData = convertYuvToJpeg(cameraImage, 80)
+                                        if (jpegData != null) {
+                                            // Create combined data: [intrinsics] + [jpeg]
+                                            val intrinsicsData = ByteArray(24).apply {
+                                                val buffer = ByteBuffer.wrap(this)
+                                                    .order(ByteOrder.LITTLE_ENDIAN)
+                                                buffer.putFloat(fx)
+                                                buffer.putFloat(fy)
+                                                buffer.putFloat(cx)
+                                                buffer.putFloat(cy)
+                                                buffer.putInt(width)
+                                                buffer.putInt(height)
+                                            }
+
+                                            val combinedData = intrinsicsData + jpegData
+                                            sendImageToPC(combinedData)
+                                        }
+                                    }
                                 }
                             } catch (e: Exception) {
                                 Log.e("CameraPreview", "Error processing frame: ${e.message}")
-                            } finally {
-                                cameraImage.close()
                             }
+
                         }
                     }
                 }
@@ -215,8 +217,9 @@ private fun convertYuvToJpeg(image: Image, quality: Int): ByteArray? {
 fun sendImageToPC(data: ByteArray) {
     Thread {
         try {
-            val socket = Socket("127.0.0.1", 8080)
+            val socket = Socket("192.168.0.203", 8080)
             val output = DataOutputStream(socket.getOutputStream())
+            output.writeInt(1)
             output.writeInt(data.size)
             output.write(data)
 
