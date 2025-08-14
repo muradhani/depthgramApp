@@ -63,7 +63,7 @@ actual fun CameraPreview(modifier: Modifier) {
 
 
     LaunchedEffect(latestFrame) {
-        socketClass.globalLatestFrame = latestFrame
+//        socketClass.globalLatestFrame = latestFrame
     }
 
     // Request permission
@@ -223,16 +223,18 @@ private fun convertYuvToJpeg(image: Image, quality: Int): ByteArray? {
 fun sendImageToPC(data: ByteArray) {
     Thread {
         try {
-            socketClass.output.writeInt(1)
-            socketClass.output.writeInt(data.size)
-            socketClass.output.write(data)
+            val socket = Socket("192.168.0.203", 8080)
+            val output = DataOutputStream(socket.getOutputStream())
+            output.writeInt(1)
+            output.writeInt(data.size)
+            output.write(data)
 
-            while (!socketClass.socket.isClosed) {
-                val msgType = input
+            while (!socket.isClosed) {
+                val msgType = socketClass.inputStream.readInt()
 
                 if (msgType == 3) {
-                    val x = input
-                    val y = input
+                    val x = socketClass.inputStream.readInt()
+                    val y = socketClass.inputStream.readInt()
                     println("📍 Click from desktop: $x, $y")
 
 
