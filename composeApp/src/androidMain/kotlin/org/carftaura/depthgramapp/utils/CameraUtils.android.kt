@@ -27,14 +27,20 @@ import com.google.ar.core.Session
 import com.google.ar.core.TrackingState
 import com.google.ar.sceneform.ArSceneView
 import java.io.ByteArrayOutputStream
+import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.net.Socket
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 
-private var globalLatestFrame: Frame? = null
+object socketClass{
+    var globalLatestFrame: Frame? = null
+    val socket = Socket("192.168.0.203", 8080)
+    val output = DataOutputStream(socket.getOutputStream())
+    val inputStream = DataInputStream(socket.getInputStream())
 
+}
 @SuppressLint("ClickableViewAccessibility")
 @Composable
 actual fun CameraPreview(modifier: Modifier) {
@@ -57,7 +63,7 @@ actual fun CameraPreview(modifier: Modifier) {
 
 
     LaunchedEffect(latestFrame) {
-        globalLatestFrame = latestFrame
+        socketClass.globalLatestFrame = latestFrame
     }
 
     // Request permission
@@ -217,13 +223,11 @@ private fun convertYuvToJpeg(image: Image, quality: Int): ByteArray? {
 fun sendImageToPC(data: ByteArray) {
     Thread {
         try {
-            val socket = Socket("192.168.0.203", 8080)
-            val output = DataOutputStream(socket.getOutputStream())
-            output.writeInt(1)
-            output.writeInt(data.size)
-            output.write(data)
+            socketClass.output.writeInt(1)
+            socketClass.output.writeInt(data.size)
+            socketClass.output.write(data)
 
-            while (!socket.isClosed) {
+            while (!socketClass.socket.isClosed) {
                 val msgType = input
 
                 if (msgType == 3) {
@@ -235,13 +239,13 @@ fun sendImageToPC(data: ByteArray) {
                     val distance = getDistanceAtPixel(x, y)
 
 
-                    output.writeInt(2)
-                    output.writeFloat(distance!!)
-                    output.flush()
+                    socketClass.output.writeInt(2)
+                    socketClass.output.writeFloat(distance!!)
+                    socketClass.output.flush()
                 }
             }
-            output.flush()
-            socket.close()
+            socketClass.output.flush()
+            socketClass.socket.close()
         } catch (e: Exception) {
             Log.e("SocketSend", "Failed to send image", e)
         }
@@ -249,5 +253,5 @@ fun sendImageToPC(data: ByteArray) {
 }
 
 fun getDistanceAtPixel(x: Int, y: Int): Float? {
-    return globalLatestFrame?.hitTest(x.toFloat(), y.toFloat())[0]?.distance
+    return socketClass.globalLatestFrame?.hitTest(x.toFloat(), y.toFloat())[0]?.distance
 }
