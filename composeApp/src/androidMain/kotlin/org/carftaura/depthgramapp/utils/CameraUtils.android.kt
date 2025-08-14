@@ -135,7 +135,7 @@ actual fun CameraPreview(modifier: Modifier) {
                             val width = intrinsics.imageDimensions[0]
                             val height = intrinsics.imageDimensions[1]
                             try {
-                                if (frame.camera.trackingState == TrackingState.PAUSED) {
+                                if (frame.camera.trackingState == TrackingState.TRACKING) {
 
                                     frame.acquireCameraImage().use { cameraImage ->  // <-- use{} ensures close()
 
