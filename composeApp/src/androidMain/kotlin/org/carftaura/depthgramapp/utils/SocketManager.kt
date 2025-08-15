@@ -1,7 +1,10 @@
 package org.carftaura.depthgramapp.utils
 
 import android.util.Log
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.DataInputStream
 import java.io.DataOutputStream
@@ -10,7 +13,7 @@ import java.net.Socket
 object SocketManager {
     private const val HOST = "192.168.0.203"
     private const val PORT = 8080
-
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     lateinit var socket: Socket
     lateinit var output: DataOutputStream
     lateinit var input: DataInputStream
@@ -25,6 +28,14 @@ object SocketManager {
             socket = Socket(HOST, PORT)
             output = DataOutputStream(socket.getOutputStream())
             input = DataInputStream(socket.getInputStream())
+            scope.launch{
+                listenForMessages({ x,y ->
+                    val distance = FrameProcessor.getDistanceAtPixel(x.toFloat(),y.toFloat())
+                    distance?.let {  sendDistance(it) }
+                    Log.e("SocketManagerPC", "the distance Pc $distance")
+
+                })
+            }
             isConnected = true
             Log.i("SocketManager", "Connected to $HOST:$PORT")
         } catch (e: Exception) {
@@ -44,14 +55,16 @@ object SocketManager {
         }
     }
 
-    fun listenForMessages(onTouch: (Int, Int) -> Unit) {
-        Thread {
+    suspend fun listenForMessages(onTouch: (Int, Int) -> Unit) {
+        withContext(Dispatchers.IO){
             try {
                 while (isConnected) {
                     val msgType = input.readInt()
                     if (msgType == 3) {
+                        val size = input.readInt()
                         val x = input.readInt()
                         val y = input.readInt()
+                        Log.e("SocketManagerPC", "on touch x :$x and y $y")
                         onTouch(x, y)
                     }
                 }
@@ -59,7 +72,7 @@ object SocketManager {
                 Log.e("SocketManager", "Listen loop stopped", e)
                 isConnected = false
             }
-        }.start()
+        }
     }
 
     fun sendDistance(distance: Float) {
