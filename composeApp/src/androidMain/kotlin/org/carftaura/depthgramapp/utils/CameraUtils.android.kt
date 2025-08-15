@@ -45,6 +45,7 @@ object socketClass{
 @Composable
 actual fun CameraPreview(modifier: Modifier) {
     val context = LocalContext.current
+    var logText by remember { mutableStateOf("Starting...") }
     var session by remember { mutableStateOf<Session?>(null) }
     var hasCameraPermission by remember {
         mutableStateOf(
@@ -54,26 +55,6 @@ actual fun CameraPreview(modifier: Modifier) {
             ) == PackageManager.PERMISSION_GRANTED
         )
     }
-    var logText by remember { mutableStateOf("Starting...") }
-    val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission(),
-        onResult = { granted -> hasCameraPermission = granted }
-    )
-    var latestFrame by remember { mutableStateOf<Frame?>(null) }
-
-
-    LaunchedEffect(latestFrame) {
-//        socketClass.globalLatestFrame = latestFrame
-    }
-
-    // Request permission
-    LaunchedEffect(Unit) {
-        if (!hasCameraPermission) {
-            permissionLauncher.launch(Manifest.permission.CAMERA)
-        }
-    }
-
-    // Initialize ARCore session
     LaunchedEffect(hasCameraPermission) {
         if (hasCameraPermission && session == null) {
             try {
@@ -95,6 +76,12 @@ actual fun CameraPreview(modifier: Modifier) {
             }
         }
     }
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+        onResult = { granted -> hasCameraPermission = granted }
+    )
+    var latestFrame by remember { mutableStateOf<Frame?>(null) }
+
 
     // UI layout
     Column(modifier = modifier.fillMaxSize()) {
@@ -108,60 +95,28 @@ actual fun CameraPreview(modifier: Modifier) {
                 factory = { ctx ->
                     ArSceneView(ctx).apply {
                         setupSession(session!!)
+                        SocketManager.initConnection()
                         resume()
                         arSceneView = this
                         this.setOnTouchListener { _, event ->
                             if (event.action == android.view.MotionEvent.ACTION_DOWN) {
-                                val hits = latestFrame?.hitTest(event.x, event.y)
-                                if (!hits.isNullOrEmpty()) {
-                                    val hit = hits[0]
-                                    val distanceMeters = hit.distance
-                                    val hitPose = hit.hitPose
-                                    logText = "Distance: $distanceMeters m, Pose: $hitPose"
-                                }
+                                FrameProcessor.getDistanceAtPixel(event.x,event.y)
                             }
                             true
                         }
                         this.scene.addOnUpdateListener {
                             val frame = this.arFrame ?: return@addOnUpdateListener
-                            latestFrame = frame
-
-                            // Get camera intrinsics
-                            val intrinsics = frame.camera.imageIntrinsics
-                            val fx = intrinsics.focalLength[0]
-                            val fy = intrinsics.focalLength[1]
-                            val cx = intrinsics.principalPoint[0]
-                            val cy = intrinsics.principalPoint[1]
-                            val width = intrinsics.imageDimensions[0]
-                            val height = intrinsics.imageDimensions[1]
-                            try {
-                                if (frame.camera.trackingState == TrackingState.TRACKING) {
-
-                                    frame.acquireCameraImage().use { cameraImage ->  // <-- use{} ensures close()
-
-                                        val jpegData = convertYuvToJpeg(cameraImage, 80)
-                                        if (jpegData != null) {
-                                            // Create combined data: [intrinsics] + [jpeg]
-                                            val intrinsicsData = ByteArray(24).apply {
-                                                val buffer = ByteBuffer.wrap(this)
-                                                    .order(ByteOrder.LITTLE_ENDIAN)
-                                                buffer.putFloat(fx)
-                                                buffer.putFloat(fy)
-                                                buffer.putFloat(cx)
-                                                buffer.putFloat(cy)
-                                                buffer.putInt(width)
-                                                buffer.putInt(height)
-                                            }
-
-                                            val combinedData = intrinsicsData + jpegData
-                                            sendImageToPC(combinedData)
+                            FrameProcessor.lastFrame = frame
+                            if (frame.camera.trackingState == TrackingState.TRACKING) {
+                                frame.acquireCameraImage()
+                                    .use { cameraImage ->
+                                        val bytes = FrameProcessor.convertFrameToBytes(cameraImage, frame)
+                                        cameraImage.close()
+                                        if (bytes != null) {
+                                            SocketManager.sendImage(bytes)
                                         }
                                     }
-                                }
-                            } catch (e: Exception) {
-                                Log.e("CameraPreview", "Error processing frame: ${e.message}")
                             }
-
                         }
                     }
                 }
@@ -175,85 +130,4 @@ actual fun CameraPreview(modifier: Modifier) {
             style = MaterialTheme.typography.bodyLarge
         )
     }
-}
-
-private fun convertYuvToJpeg(image: Image, quality: Int): ByteArray? {
-    return try {
-        val planes = image.planes
-        val yBuffer = planes[0].buffer
-        val uBuffer = planes[1].buffer
-        val vBuffer = planes[2].buffer
-
-        val ySize = yBuffer.remaining()
-        val uSize = uBuffer.remaining()
-        val vSize = vBuffer.remaining()
-
-        val nv21 = ByteArray(ySize + uSize + vSize)
-        yBuffer.get(nv21, 0, ySize)
-        vBuffer.get(nv21, ySize, vSize)
-        uBuffer.get(nv21, ySize + vSize, uSize)
-
-        val yuvImage = YuvImage(
-            nv21, ImageFormat.NV21,
-            image.width, image.height, null
-        )
-
-        val out = ByteArrayOutputStream()
-        yuvImage.compressToJpeg(
-            Rect(0, 0, image.width, image.height),
-            quality,
-            out
-        )
-        val options = BitmapFactory.Options().apply {
-            inSampleSize = 2
-        }
-        val scaledBitmap = BitmapFactory.decodeByteArray(
-            out.toByteArray(), 0, out.size(), options
-        )
-        val scaledOut = ByteArrayOutputStream()
-        scaledBitmap?.compress(Bitmap.CompressFormat.JPEG, quality, scaledOut)
-
-        scaledOut.toByteArray()
-    } catch (e: Exception) {
-        Log.e("ImageConvert", "YUV to JPEG failed", e)
-        null
-    }
-}
-
-fun sendImageToPC(data: ByteArray) {
-    Thread {
-        try {
-            val socket = Socket("192.168.0.203", 8080)
-            val output = DataOutputStream(socket.getOutputStream())
-            output.writeInt(1)
-            output.writeInt(data.size)
-            output.write(data)
-
-            while (!socket.isClosed) {
-                val msgType = socketClass.inputStream.readInt()
-
-                if (msgType == 3) {
-                    val x = socketClass.inputStream.readInt()
-                    val y = socketClass.inputStream.readInt()
-                    println("📍 Click from desktop: $x, $y")
-
-
-                    val distance = getDistanceAtPixel(x, y)
-
-
-                    socketClass.output.writeInt(2)
-                    socketClass.output.writeFloat(distance!!)
-                    socketClass.output.flush()
-                }
-            }
-            socketClass.output.flush()
-            socketClass.socket.close()
-        } catch (e: Exception) {
-            Log.e("SocketSend", "Failed to send image", e)
-        }
-    }.start()
-}
-
-fun getDistanceAtPixel(x: Int, y: Int): Float? {
-    return socketClass.globalLatestFrame?.hitTest(x.toFloat(), y.toFloat())[0]?.distance
 }
