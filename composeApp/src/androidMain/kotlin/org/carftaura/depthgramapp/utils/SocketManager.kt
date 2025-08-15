@@ -1,6 +1,8 @@
 package org.carftaura.depthgramapp.utils
 
 import android.util.Log
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.net.Socket
@@ -16,8 +18,8 @@ object SocketManager {
     @Volatile
     var isConnected = false
 
-    fun initConnection() {
-        if (isConnected) return
+    suspend fun initConnection() = withContext(Dispatchers.IO) {
+        if (isConnected) return@withContext
 
         try {
             socket = Socket(HOST, PORT)
