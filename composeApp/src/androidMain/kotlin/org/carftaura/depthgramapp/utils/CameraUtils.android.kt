@@ -1,15 +1,8 @@
 package org.carftaura.depthgramapp.utils
 
 import android.Manifest
-import android.R.id.input
 import android.annotation.SuppressLint
 import android.content.pm.PackageManager
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.ImageFormat
-import android.graphics.Rect
-import android.graphics.YuvImage
-import android.media.Image
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -26,21 +19,10 @@ import com.google.ar.core.Frame
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingState
 import com.google.ar.sceneform.ArSceneView
-import java.io.ByteArrayOutputStream
-import java.io.DataInputStream
-import java.io.DataOutputStream
-import java.net.Socket
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
-
-object socketClass{
-    var globalLatestFrame: Frame? = null
-    val socket = Socket("192.168.0.203", 8080)
-    val output = DataOutputStream(socket.getOutputStream())
-    val inputStream = DataInputStream(socket.getInputStream())
-
-}
 @SuppressLint("ClickableViewAccessibility")
 @Composable
 actual fun CameraPreview(modifier: Modifier) {
@@ -55,6 +37,11 @@ actual fun CameraPreview(modifier: Modifier) {
             ) == PackageManager.PERMISSION_GRANTED
         )
     }
+
+    LaunchedEffect(Unit) {
+        SocketManager.initConnection()
+    }
+
     LaunchedEffect(hasCameraPermission) {
         if (hasCameraPermission && session == null) {
             try {
@@ -63,8 +50,6 @@ actual fun CameraPreview(modifier: Modifier) {
                         depthMode = Config.DepthMode.AUTOMATIC
                         updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
                         focusMode = Config.FocusMode.AUTO
-                        instantPlacementMode = Config.InstantPlacementMode.LOCAL_Y_UP
-                        planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
                     }.let { arSession.configure(it) }
                     session = arSession
                     logText = "AR session initialized."
@@ -95,7 +80,6 @@ actual fun CameraPreview(modifier: Modifier) {
                 factory = { ctx ->
                     ArSceneView(ctx).apply {
                         setupSession(session!!)
-                        SocketManager.initConnection()
                         resume()
                         arSceneView = this
                         this.setOnTouchListener { _, event ->
@@ -111,10 +95,12 @@ actual fun CameraPreview(modifier: Modifier) {
                                 frame.acquireCameraImage()
                                     .use { cameraImage ->
                                         val bytes = FrameProcessor.convertFrameToBytes(cameraImage, frame)
-                                        cameraImage.close()
                                         if (bytes != null) {
-                                            SocketManager.sendImage(bytes)
+                                            CoroutineScope(Dispatchers.IO).launch {
+                                                SocketManager.sendImage(bytes)
+                                            }
                                         }
+                                        cameraImage.close()
                                     }
                             }
                         }
