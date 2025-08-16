@@ -60,13 +60,15 @@ object SocketManager {
     }
 
     suspend fun sendImage(data: ByteArray) {
-        if (!isConnected) return
-        try {
-            output.writeInt(data.size)
-            output.write(data)
-            output.flush()
-        } catch (e: Exception) {
-            Log.e("SocketManager", "Failed to send image", e)
+        CoroutineScope(Dispatchers.IO).launch {
+            if (!isConnected) return@launch
+            try {
+                output.writeInt(data.size)
+                output.write(data)
+                output.flush()
+            } catch (e: Exception) {
+                Log.e("SocketManager", "Failed to send image", e)
+            }
         }
     }
 
