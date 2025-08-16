@@ -18,46 +18,31 @@ object FrameProcessor {
     private val scope = CoroutineScope(Dispatchers.Default+ SupervisorJob())
 
     var lastFrame : Frame? = null
-    fun convertFrameToBytes(
-        image: Image,
-        frame: Frame,
-        onResult: (ByteArray?) -> Unit
-    ) {
-        scope.launch {
-            val result = try {
-                val jpegData = convertYuvToJpeg(image, 80)
-                if (jpegData == null) {
-                    null
-                } else {
-                    val intrinsics = frame.camera.imageIntrinsics
-                    val fx = intrinsics.focalLength[0]
-                    val fy = intrinsics.focalLength[1]
-                    val cx = intrinsics.principalPoint[0]
-                    val cy = intrinsics.principalPoint[1]
-                    val width = intrinsics.imageDimensions[0]
-                    val height = intrinsics.imageDimensions[1]
+    fun convertFrameToBytes(image: Image,frame: Frame): ByteArray? {
+        return try {
+            val jpegData = convertYuvToJpeg(image, 80) ?: return null
+            val intrinsics = frame.camera.imageIntrinsics
+            val fx = intrinsics.focalLength[0]
+            val fy = intrinsics.focalLength[1]
+            val cx = intrinsics.principalPoint[0]
+            val cy = intrinsics.principalPoint[1]
+            val width = intrinsics.imageDimensions[0]
+            val height = intrinsics.imageDimensions[1]
 
-                    val intrinsicsData = ByteArray(24).apply {
-                        val buffer = ByteBuffer.wrap(this).order(ByteOrder.LITTLE_ENDIAN)
-                        buffer.putFloat(fx)
-                        buffer.putFloat(fy)
-                        buffer.putFloat(cx)
-                        buffer.putFloat(cy)
-                        buffer.putInt(width)
-                        buffer.putInt(height)
-                    }
-
-                    intrinsicsData + jpegData
-                }
-            } catch (e: Exception) {
-                Log.e("FrameProcessor", "Frame conversion failed", e)
-                null
+            val intrinsicsData = ByteArray(24).apply {
+                val buffer = ByteBuffer.wrap(this).order(ByteOrder.LITTLE_ENDIAN)
+                buffer.putFloat(fx)
+                buffer.putFloat(fy)
+                buffer.putFloat(cx)
+                buffer.putFloat(cy)
+                buffer.putInt(width)
+                buffer.putInt(height)
             }
 
-
-            withContext(Dispatchers.Main) {
-                onResult(result)
-            }
+            intrinsicsData + jpegData
+        } catch (e: Exception) {
+            Log.e("FrameProcessor", "Frame conversion failed", e)
+            null
         }
     }
 
