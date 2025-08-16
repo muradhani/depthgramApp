@@ -13,10 +13,19 @@ import java.net.Socket
 object SocketManager {
     private const val HOST = "192.168.0.203"
     private const val PORT = 8080
+
+    private const val CONTROL_PORT = 8081
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     lateinit var socket: Socket
+
+    private var controlSocket: Socket? = null
+
     lateinit var output: DataOutputStream
     lateinit var input: DataInputStream
+
+    private var controlOutput: DataOutputStream? = null
+
+    private var controlInput: DataInputStream? = null
 
     @Volatile
     var isConnected = false
@@ -36,6 +45,11 @@ object SocketManager {
 
                 })
             }
+
+            controlSocket = Socket(HOST, CONTROL_PORT)
+            controlOutput = DataOutputStream(controlSocket!!.getOutputStream())
+            controlInput = DataInputStream(controlSocket!!.getInputStream())
+
             isConnected = true
             Log.i("SocketManager", "Connected to $HOST:$PORT")
         } catch (e: Exception) {
@@ -59,13 +73,15 @@ object SocketManager {
         withContext(Dispatchers.IO){
             try {
                 while (isConnected) {
-                    val msgType = input.readInt()
-                    if (msgType == 3) {
-                        val size = input.readInt()
-                        val x = input.readInt()
-                        val y = input.readInt()
-                        Log.e("SocketManagerPC", "on touch x :$x and y $y")
-                        onTouch(x, y)
+                    controlInput?.let {
+                        val msgType = it.readInt()
+                        if (msgType == 3) {
+                            val size = it.readInt()
+                            val x = it.readInt()
+                            val y = it.readInt()
+                            Log.e("SocketManagerPC", "on touch x :$x and y $y")
+                            onTouch(x, y)
+                        }
                     }
                 }
             } catch (e: Exception) {
@@ -78,9 +94,11 @@ object SocketManager {
     fun sendDistance(distance: Float) {
         if (!isConnected) return
         try {
-            output.writeInt(2)
-            output.writeFloat(distance)
-            output.flush()
+            controlOutput?.let {
+                it.writeInt(2)
+                it.writeFloat(distance)
+                it.flush()
+            }
         } catch (e: Exception) {
             Log.e("SocketManager", "Failed to send distance", e)
         }
