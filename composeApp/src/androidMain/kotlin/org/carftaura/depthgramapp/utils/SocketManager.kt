@@ -37,14 +37,15 @@ object SocketManager {
             socket = Socket(HOST, PORT)
             output = DataOutputStream(socket.getOutputStream())
             input = DataInputStream(socket.getInputStream())
-            scope.launch{
                 listenForMessages({ x,y ->
-                    val distance = FrameProcessor.getDistanceAtPixel(x.toFloat(),y.toFloat())
-                    distance?.let {  sendDistance(it) }
-                    Log.e("SocketManagerPC", "the distance Pc $distance")
-
+                    scope.launch {
+                        val distance = FrameProcessor.getDistanceAtPixel(x.toFloat(),y.toFloat())
+                        distance?.let {
+                            scope.launch { sendDistance(it) }
+                        }
+                        Log.e("SocketManagerPC", "the distance Pc $distance")
+                    }
                 })
-            }
             isConnected = true
 
             controlSocket = Socket(HOST, CONTROL_PORT)
@@ -58,7 +59,7 @@ object SocketManager {
         }
     }
 
-    fun sendImage(data: ByteArray) {
+    suspend fun sendImage(data: ByteArray) {
         if (!isConnected) return
         try {
             output.writeInt(data.size)
@@ -88,8 +89,9 @@ object SocketManager {
         }
     }
 
-    fun sendDistance(distance: Float) {
-        if (!isConnected) return
+    suspend fun sendDistance(distance: Float) {
+        withContext(Dispatchers.IO){
+        if (!isConnected) return@withContext
         try {
             controlOutput?.let {
                 it.writeFloat(distance)
@@ -98,5 +100,6 @@ object SocketManager {
         } catch (e: Exception) {
             Log.e("SocketManager", "Failed to send distance", e)
         }
+    }
     }
 }

@@ -82,26 +82,25 @@ actual fun CameraPreview(modifier: Modifier) {
                         setupSession(session!!)
                         resume()
                         arSceneView = this
-                        this.setOnTouchListener { _, event ->
-                            if (event.action == android.view.MotionEvent.ACTION_DOWN) {
-                                FrameProcessor.getDistanceAtPixel(event.x,event.y)
-                            }
-                            true
-                        }
+//                        this.setOnTouchListener { _, event ->
+//                            if (event.action == android.view.MotionEvent.ACTION_DOWN) {
+//                                FrameProcessor.getDistanceAtPixel(event.x,event.y)
+//                            }
+//                            true
+//                        }
                         this.scene.addOnUpdateListener {
                             val frame = this.arFrame ?: return@addOnUpdateListener
                             FrameProcessor.lastFrame = frame
                             if (frame.camera.trackingState == TrackingState.TRACKING) {
-                                frame.acquireCameraImage()
-                                    .use { cameraImage ->
+                                frame.acquireCameraImage().use { cameraImage ->
+                                    CoroutineScope(Dispatchers.Default).launch {
                                         val bytes = FrameProcessor.convertFrameToBytes(cameraImage, frame)
                                         if (bytes != null) {
-                                            CoroutineScope(Dispatchers.IO).launch {
-                                                SocketManager.sendImage(bytes)
-                                            }
+                                            SocketManager.sendImage(bytes)
                                         }
                                         cameraImage.close()
                                     }
+                                }
                             }
                         }
                     }

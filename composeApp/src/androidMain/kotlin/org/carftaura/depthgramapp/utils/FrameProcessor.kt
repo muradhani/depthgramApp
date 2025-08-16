@@ -71,7 +71,7 @@ object FrameProcessor {
         }
 
     }
-    fun getDistanceAtPixel(x: Float,y: Float): Float? {
+    suspend fun getDistanceAtPixel(x: Float,y: Float): Float? {
         lastFrame?.let {return it.hitTest(x, y)[0]?.distance  }
         return null
     }
