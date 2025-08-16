@@ -93,13 +93,16 @@ actual fun CameraPreview(modifier: Modifier) {
                             FrameProcessor.lastFrame = frame
                             if (frame.camera.trackingState == TrackingState.TRACKING) {
                                 frame.acquireCameraImage().use { cameraImage ->
-                                    CoroutineScope(Dispatchers.Default).launch {
-                                        val bytes = FrameProcessor.convertFrameToBytes(cameraImage, frame)
-                                        if (bytes != null) {
-                                            SocketManager.sendImage(bytes)
+                                    FrameProcessor.convertFrameToBytes(
+                                        cameraImage,
+                                        frame,
+                                        onResult = { bytes ->
+                                            if (bytes != null) {
+                                                SocketManager.sendImage(bytes)
+                                            }
+                                            cameraImage.close()
                                         }
-                                        cameraImage.close()
-                                    }
+                                    )
                                 }
                             }
                         }

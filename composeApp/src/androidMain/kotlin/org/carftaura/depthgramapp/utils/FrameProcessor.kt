@@ -5,41 +5,64 @@ import android.graphics.*
 import android.media.Image
 import android.util.Log
 import com.google.ar.core.Frame
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 object FrameProcessor {
-    var lastFrame : Frame? = null
-    fun convertFrameToBytes(image: Image,frame: Frame): ByteArray? {
-        return try {
-            val jpegData = convertYuvToJpeg(image, 80) ?: return null
-            val intrinsics = frame.camera.imageIntrinsics
-            val fx = intrinsics.focalLength[0]
-            val fy = intrinsics.focalLength[1]
-            val cx = intrinsics.principalPoint[0]
-            val cy = intrinsics.principalPoint[1]
-            val width = intrinsics.imageDimensions[0]
-            val height = intrinsics.imageDimensions[1]
+    private val scope = CoroutineScope(Dispatchers.Default+ SupervisorJob())
 
-            val intrinsicsData = ByteArray(24).apply {
-                val buffer = ByteBuffer.wrap(this).order(ByteOrder.LITTLE_ENDIAN)
-                buffer.putFloat(fx)
-                buffer.putFloat(fy)
-                buffer.putFloat(cx)
-                buffer.putFloat(cy)
-                buffer.putInt(width)
-                buffer.putInt(height)
+    var lastFrame : Frame? = null
+    fun convertFrameToBytes(
+        image: Image,
+        frame: Frame,
+        onResult: (ByteArray?) -> Unit
+    ) {
+        scope.launch {
+            val result = try {
+                val jpegData = convertYuvToJpeg(image, 80)
+                if (jpegData == null) {
+                    null
+                } else {
+                    val intrinsics = frame.camera.imageIntrinsics
+                    val fx = intrinsics.focalLength[0]
+                    val fy = intrinsics.focalLength[1]
+                    val cx = intrinsics.principalPoint[0]
+                    val cy = intrinsics.principalPoint[1]
+                    val width = intrinsics.imageDimensions[0]
+                    val height = intrinsics.imageDimensions[1]
+
+                    val intrinsicsData = ByteArray(24).apply {
+                        val buffer = ByteBuffer.wrap(this).order(ByteOrder.LITTLE_ENDIAN)
+                        buffer.putFloat(fx)
+                        buffer.putFloat(fy)
+                        buffer.putFloat(cx)
+                        buffer.putFloat(cy)
+                        buffer.putInt(width)
+                        buffer.putInt(height)
+                    }
+
+                    intrinsicsData + jpegData
+                }
+            } catch (e: Exception) {
+                Log.e("FrameProcessor", "Frame conversion failed", e)
+                null
             }
 
-            intrinsicsData + jpegData
-        } catch (e: Exception) {
-            Log.e("FrameProcessor", "Frame conversion failed", e)
-            null
+
+            withContext(Dispatchers.Main) {
+                onResult(result)
+            }
         }
     }
 
-    private fun convertYuvToJpeg(image: Image, quality: Int): ByteArray? {
+
+   private  fun convertYuvToJpeg(image: Image, quality: Int): ByteArray? {
         return try {
             val planes = image.planes
             val yBuffer = planes[0].buffer
