@@ -39,11 +39,16 @@ object SocketManager {
             input = DataInputStream(socket.getInputStream())
                 listenForMessages({ x,y ->
                     scope.launch {
-                        val distance = FrameProcessor.getDistanceAtPixel(x.toFloat(),y.toFloat())
-                        distance?.let {
-                            scope.launch { sendDistance(it) }
-                        }
-                        Log.e("SocketManagerPC", "the distance Pc $distance")
+                        FrameProcessor.getDistanceAtPixel(
+                            x.toFloat(), y.toFloat(),
+                            onResult = { distance ->
+                                distance?.let {
+                                    scope.launch { sendDistance(it) }
+                                }
+                                Log.e("SocketManagerPC", "the distance Pc $distance")
+                            }
+                        )
+
                     }
                 })
             isConnected = true
@@ -81,7 +86,9 @@ object SocketManager {
                         val x = it.readInt()
                         val y = it.readInt()
                         Log.e("SocketManagerPC", "on touch x :$x and y $y")
-                        onTouch(x, y)
+                        withContext(Dispatchers.Default){
+                            onTouch(x, y)
+                        }
                     }
                 }
             } catch (e: Exception) {
@@ -92,16 +99,16 @@ object SocketManager {
     }
 
     suspend fun sendDistance(distance: Float) {
-        withContext(Dispatchers.IO){
-        if (!isConnected) return@withContext
-        try {
-            controlOutput?.let {
-                it.writeFloat(distance)
-                it.flush()
+        withContext(Dispatchers.IO) {
+            if (!isConnected) return@withContext
+            try {
+                controlOutput?.let {
+                    it.writeFloat(distance)
+                    it.flush()
+                }
+            } catch (e: Exception) {
+                Log.e("SocketManager", "Failed to send distance", e)
             }
-        } catch (e: Exception) {
-            Log.e("SocketManager", "Failed to send distance", e)
         }
-    }
     }
 }
