@@ -60,7 +60,6 @@ object SocketManager {
     fun sendImage(data: ByteArray) {
         if (!isConnected) return
         try {
-            output.writeInt(1)
             output.writeInt(data.size)
             output.write(data)
             output.flush()
@@ -74,14 +73,11 @@ object SocketManager {
             try {
                 while (isConnected) {
                     controlInput?.let {
-                        val msgType = it.readInt()
-                        if (msgType == 3) {
-                            val size = it.readInt()
-                            val x = it.readInt()
-                            val y = it.readInt()
-                            Log.e("SocketManagerPC", "on touch x :$x and y $y")
-                            onTouch(x, y)
-                        }
+                        val size = it.readInt()
+                        val x = it.readInt()
+                        val y = it.readInt()
+                        Log.e("SocketManagerPC", "on touch x :$x and y $y")
+                        onTouch(x, y)
                     }
                 }
             } catch (e: Exception) {
@@ -95,7 +91,6 @@ object SocketManager {
         if (!isConnected) return
         try {
             controlOutput?.let {
-                it.writeInt(2)
                 it.writeFloat(distance)
                 it.flush()
             }
