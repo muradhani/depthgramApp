@@ -45,12 +45,13 @@ object SocketManager {
 
                 })
             }
+            isConnected = true
 
             controlSocket = Socket(HOST, CONTROL_PORT)
             controlOutput = DataOutputStream(controlSocket!!.getOutputStream())
             controlInput = DataInputStream(controlSocket!!.getInputStream())
 
-            isConnected = true
+
             Log.i("SocketManager", "Connected to $HOST:$PORT")
         } catch (e: Exception) {
             Log.e("SocketManager", "Connection failed", e)
