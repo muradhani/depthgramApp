@@ -94,8 +94,23 @@ object FrameProcessor {
         }
 
     }
-    suspend fun getDistanceAtPixel(x: Float,y: Float): Float? {
-        lastFrame?.let {return it.hitTest(x, y)[0]?.distance  }
-        return null
+    fun getDistanceAtPixel(
+        x: Float,
+        y: Float,
+        onResult: (Float?) -> Unit
+    ) {
+        scope.launch(Dispatchers.Default) {
+            val distance = try {
+                lastFrame?.hitTest(x, y)?.firstOrNull()?.distance
+            } catch (e: Exception) {
+                Log.e("FrameProcessor", "HitTest failed", e)
+                null
+            }
+
+            withContext(Dispatchers.Main) {
+                onResult(distance)
+            }
+        }
     }
+
 }
