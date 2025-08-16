@@ -64,7 +64,7 @@ object SocketManager {
         }
     }
 
-    suspend fun sendImage(data: ByteArray) {
+     fun sendImage(data: ByteArray) {
         CoroutineScope(Dispatchers.IO).launch {
             if (!isConnected) return@launch
             try {
