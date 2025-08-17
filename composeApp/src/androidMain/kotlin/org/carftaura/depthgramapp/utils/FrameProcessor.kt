@@ -10,6 +10,7 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 object FrameProcessor {
+    @Volatile
     var lastFrame : Frame? = null
     fun convertFrameToBytes(image: Image,frame: Frame): ByteArray? {
         return try {
@@ -71,8 +72,13 @@ object FrameProcessor {
         }
 
     }
+
     fun getDistanceAtPixel(x: Float,y: Float): Float? {
-        lastFrame?.let {return it.hitTest(x, y)[0]?.distance  }
+        try {
+            lastFrame?.let {return it.hitTest(x, y)[0]?.distance  }
+        }catch (e: Exception){
+            Log.e("traccking","ditance not av")
+        }
         return null
     }
 }
