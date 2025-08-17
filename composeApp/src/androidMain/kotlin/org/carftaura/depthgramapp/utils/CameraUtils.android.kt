@@ -48,8 +48,10 @@ actual fun CameraPreview(modifier: Modifier) {
                 Session(context).also { arSession ->
                     Config(arSession).apply {
                         depthMode = Config.DepthMode.AUTOMATIC
-                        updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
+                        instantPlacementMode = Config.InstantPlacementMode.LOCAL_Y_UP
+                        planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
                         focusMode = Config.FocusMode.AUTO
+                        updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
                     }.let { arSession.configure(it) }
                     session = arSession
                     logText = "AR session initialized."
@@ -83,8 +85,19 @@ actual fun CameraPreview(modifier: Modifier) {
                         resume()
                         arSceneView = this
                         this.setOnTouchListener { _, event ->
+                            val frame = this.arFrame ?: return@setOnTouchListener true
                             if (event.action == android.view.MotionEvent.ACTION_DOWN) {
-                                FrameProcessor.getDistanceAtPixel(event.x,event.y)
+                                if (frame.camera.trackingState == TrackingState.TRACKING) {
+                                    val hits = frame.hitTest(event.x, event.y)
+                                    if (!hits.isNullOrEmpty()) {
+                                        val hit = hits[0]
+                                        val distanceMeters = hit.distance
+                                        val hitPose = hit.hitPose
+                                        logText = "Distance: $distanceMeters m, Pose: $hitPose"
+                                    }
+                                }else {
+                                    logText = "Ar not tracking yet"
+                                }
                             }
                             true
                         }
