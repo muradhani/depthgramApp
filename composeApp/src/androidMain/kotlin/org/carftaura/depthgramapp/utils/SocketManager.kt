@@ -17,7 +17,7 @@ object SocketManager {
     lateinit var socket: Socket
     lateinit var output: DataOutputStream
     lateinit var input: DataInputStream
-
+    private val writeLock = Any()
     @Volatile
     var isConnected = false
 
@@ -28,15 +28,15 @@ object SocketManager {
             socket = Socket(HOST, PORT)
             output = DataOutputStream(socket.getOutputStream())
             input = DataInputStream(socket.getInputStream())
-            scope.launch{
-                listenForMessages({ x,y ->
-                    val distance = FrameProcessor.getDistanceAtPixel(x.toFloat(),y.toFloat())
-                    distance?.let {  sendDistance(it) }
-                    Log.e("SocketManagerPC", "the distance Pc $distance")
-
-                })
-            }
             isConnected = true
+            scope.launch {
+                listenForMessages { x, y ->
+                    launch(Dispatchers.Default) {
+                        val distance = FrameProcessor.getDistanceAtPixel(x.toFloat(), y.toFloat())
+                        distance?.let { sendDistance(it) }
+                    }
+                }
+            }
             Log.i("SocketManager", "Connected to $HOST:$PORT")
         } catch (e: Exception) {
             Log.e("SocketManager", "Connection failed", e)
@@ -44,14 +44,16 @@ object SocketManager {
     }
 
     fun sendImage(data: ByteArray) {
-        if (!isConnected) return
-        try {
-            output.writeInt(1)
-            output.writeInt(data.size)
-            output.write(data)
-            output.flush()
-        } catch (e: Exception) {
-            Log.e("SocketManager", "Failed to send image", e)
+        synchronized(writeLock) {
+            if (!isConnected) return
+            try {
+                output.writeInt(1)
+                output.writeInt(data.size)
+                output.write(data)
+                output.flush()
+            } catch (e: Exception) {
+                Log.e("SocketManager", "Failed to send image", e)
+            }
         }
     }
 
@@ -76,13 +78,15 @@ object SocketManager {
     }
 
     fun sendDistance(distance: Float) {
-        if (!isConnected) return
-        try {
-            output.writeInt(2)
-            output.writeFloat(distance)
-            output.flush()
-        } catch (e: Exception) {
-            Log.e("SocketManager", "Failed to send distance", e)
+        synchronized(writeLock) {
+            if (!isConnected) return
+            try {
+                output.writeInt(2)
+                output.writeFloat(distance)
+                output.flush()
+            } catch (e: Exception) {
+                Log.e("SocketManager", "Failed to send distance", e)
+            }
         }
     }
 }
