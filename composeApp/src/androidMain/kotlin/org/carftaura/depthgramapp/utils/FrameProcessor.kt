@@ -77,16 +77,25 @@ object FrameProcessor {
     fun getDistanceAtPixel(x: Float,y: Float): Float? {
         try {
             lastFrame?.let {
-                val cameraPose = lastFrame?.camera?.pose
-                val hitPose =  lastFrame?.hitTest(x, y)[0]?.hitPose
+                val cameraPose = it.camera.pose
 
-                val hitInCameraCoords = FloatArray(3)
-                cameraPose?.inverse()?.transformPoint(hitInCameraCoords, 0, hitPose?.translation, 0)
-                return sqrt(
-                    hitInCameraCoords[0] * hitInCameraCoords[0] +
-                            hitInCameraCoords[1] * hitInCameraCoords[1] +
-                            hitInCameraCoords[2] * hitInCameraCoords[2]
-                )
+                val camX = cameraPose.tx()
+                val camY = cameraPose.ty()
+                val camZ = cameraPose.tz()
+
+                val hitResult = it.hitTest(x, y).firstOrNull()
+
+                hitResult?.let {
+                    val hitPose = it.hitPose
+                    val dx = hitPose.tx() - camX
+                    val dy = hitPose.ty() - camY
+                    val dz = hitPose.tz() - camZ
+
+                    val euclideanDistance = sqrt(dx*dx + dy*dy + dz*dz)
+
+                    Log.d("ARCore", "Accurate distance: $euclideanDistance meters")
+                    return euclideanDistance
+                }
             }
 
         }catch (e: Exception){
