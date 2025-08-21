@@ -8,6 +8,7 @@ import com.google.ar.core.Frame
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlin.math.sqrt
 
 object FrameProcessor {
     @Volatile
@@ -75,7 +76,19 @@ object FrameProcessor {
 
     fun getDistanceAtPixel(x: Float,y: Float): Float? {
         try {
-            lastFrame?.let {return it.hitTest(x, y)[0]?.distance  }
+            lastFrame?.let {
+                val cameraPose = lastFrame?.camera?.pose
+                val hitPose =  lastFrame?.hitTest(x, y)[0]?.hitPose
+
+                val hitInCameraCoords = FloatArray(3)
+                cameraPose?.inverse()?.transformPoint(hitInCameraCoords, 0, hitPose?.translation, 0)
+                return sqrt(
+                    hitInCameraCoords[0] * hitInCameraCoords[0] +
+                            hitInCameraCoords[1] * hitInCameraCoords[1] +
+                            hitInCameraCoords[2] * hitInCameraCoords[2]
+                )
+            }
+
         }catch (e: Exception){
             Log.e("traccking","ditance not av")
         }
