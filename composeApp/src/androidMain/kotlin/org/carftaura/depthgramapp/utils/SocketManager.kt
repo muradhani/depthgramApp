@@ -30,13 +30,18 @@ object SocketManager {
             input = DataInputStream(socket.getInputStream())
             isConnected = true
             scope.launch {
-                listenForMessages { x, y ->
+                listenForMessages { points ->
                     launch(Dispatchers.Default) {
-                        val distance = FrameProcessor.getDistanceAtPixel(x.toFloat(), y.toFloat())
-                        distance?.let { sendDistance(it) }
+                        val distances = points.mapNotNull { (x, y) ->
+                            FrameProcessor.getDistanceAtPixel(x.toFloat(), y.toFloat())
+                        }
+                        if (distances.isNotEmpty()) {
+                            sendDistances(distances)
+                        }
                     }
                 }
             }
+
             Log.i("SocketManager", "Connected to $HOST:$PORT")
         } catch (e: Exception) {
             Log.e("SocketManager", "Connection failed", e)
@@ -57,17 +62,23 @@ object SocketManager {
         }
     }
 
-    suspend fun listenForMessages(onTouch: (Int, Int) -> Unit) {
-        withContext(Dispatchers.IO){
+    suspend fun listenForMessages(onTouches: (List<Pair<Int, Int>>) -> Unit) {
+        withContext(Dispatchers.IO) {
             try {
                 while (isConnected) {
                     val msgType = input.readInt()
                     if (msgType == 3) {
                         val size = input.readInt()
-                        val x = input.readInt()
-                        val y = input.readInt()
-                        Log.e("SocketManagerPC", "on touch x :$x and y $y")
-                        onTouch(x, y)
+                        val points = mutableListOf<Pair<Int, Int>>()
+
+                        repeat(size / 2) {
+                            val x = input.readInt()
+                            val y = input.readInt()
+                            Log.e("SocketManagerPC", "on touch x :$x and y $y")
+                            points.add(x to y)
+                        }
+
+                        onTouches(points)
                     }
                 }
             } catch (e: Exception) {
@@ -77,16 +88,21 @@ object SocketManager {
         }
     }
 
-    fun sendDistance(distance: Float) {
+
+    fun sendDistances(distances: List<Float>) {
         synchronized(writeLock) {
             if (!isConnected) return
             try {
                 output.writeInt(2)
-                output.writeFloat(distance)
+                output.writeInt(distances.size) // number of distances
+                distances.forEach { distance ->
+                    output.writeFloat(distance)
+                }
                 output.flush()
             } catch (e: Exception) {
-                Log.e("SocketManager", "Failed to send distance", e)
+                Log.e("SocketManager", "Failed to send distances", e)
             }
         }
     }
+
 }
