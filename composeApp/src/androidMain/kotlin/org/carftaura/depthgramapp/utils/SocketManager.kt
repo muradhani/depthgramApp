@@ -98,6 +98,8 @@ object SocketManager {
                 output.writeInt(2)
                 output.writeInt(distances.size)
                 distances.forEach { info ->
+                    output.writeFloat(info.x)
+                    output.writeFloat(info.y)
                     output.writeFloat(info.dx)
                     output.writeFloat(info.dy)
                     output.writeFloat(info.dz)

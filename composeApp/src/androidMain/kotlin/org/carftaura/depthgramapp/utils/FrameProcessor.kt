@@ -99,7 +99,7 @@ object FrameProcessor {
                         "dx=$dx, dy=$dy, dz=$dz, distance=$euclideanDistance meters"
                     )
 
-                    return DistanceInfo(dx, dy, dz, euclideanDistance)
+                    return DistanceInfo(x,y,dx, dy, dz, euclideanDistance)
                 }
             }
         } catch (e: Exception) {
