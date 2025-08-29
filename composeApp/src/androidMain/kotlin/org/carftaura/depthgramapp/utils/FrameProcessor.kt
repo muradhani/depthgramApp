@@ -5,6 +5,7 @@ import android.graphics.*
 import android.media.Image
 import android.util.Log
 import com.google.ar.core.Frame
+import org.carftaura.depthgramapp.DistanceInfo
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -74,7 +75,7 @@ object FrameProcessor {
 
     }
 
-    fun getDistanceAtPixel(x: Float,y: Float): Float? {
+    fun getDistanceAtPixel(x: Float, y: Float): DistanceInfo? {
         try {
             lastFrame?.let {
                 val cameraPose = it.camera.pose
@@ -85,22 +86,26 @@ object FrameProcessor {
 
                 val hitResult = it.hitTest(x, y).firstOrNull()
 
-                hitResult?.let {
-                    val hitPose = it.hitPose
+                hitResult?.let { hr ->
+                    val hitPose = hr.hitPose
                     val dx = hitPose.tx() - camX
                     val dy = hitPose.ty() - camY
                     val dz = hitPose.tz() - camZ
 
-                    val euclideanDistance = sqrt(dx*dx + dy*dy + dz*dz)
+                    val euclideanDistance = sqrt(dx * dx + dy * dy + dz * dz)
 
-                    Log.d("ARCore", "Accurate distance: $euclideanDistance meters")
-                    return euclideanDistance
+                    Log.d(
+                        "ARCore",
+                        "dx=$dx, dy=$dy, dz=$dz, distance=$euclideanDistance meters"
+                    )
+
+                    return DistanceInfo(dx, dy, dz, euclideanDistance)
                 }
             }
-
-        }catch (e: Exception){
-            Log.e("traccking","ditance not av")
+        } catch (e: Exception) {
+            Log.e("tracking", "distance not available", e)
         }
         return null
     }
+
 }

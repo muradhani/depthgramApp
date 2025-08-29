@@ -6,6 +6,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.carftaura.depthgramapp.DistanceInfo
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.net.Socket
@@ -32,13 +33,14 @@ object SocketManager {
             scope.launch {
                 listenForMessages { points ->
                     launch(Dispatchers.Default) {
-                        val distances = points.mapNotNull { (x, y) ->
+                        val distancesInfo = points.mapNotNull { (x, y) ->
                             FrameProcessor.getDistanceAtPixel(x.toFloat(), y.toFloat())
                         }
-                        if (distances.isNotEmpty()) {
-                            sendDistances(distances)
+                        if (distancesInfo.isNotEmpty()) {
+                            sendDistancesInfo(distancesInfo)
                         }
                     }
+
                 }
             }
 
@@ -89,20 +91,22 @@ object SocketManager {
     }
 
 
-    fun sendDistances(distances: List<Float>) {
+    fun sendDistancesInfo(distances: List<DistanceInfo>) {
         synchronized(writeLock) {
             if (!isConnected) return
             try {
                 output.writeInt(2)
-                output.writeInt(distances.size) // number of distances
-                distances.forEach { distance ->
-                    output.writeFloat(distance)
+                output.writeInt(distances.size)
+                distances.forEach { info ->
+                    output.writeFloat(info.dx)
+                    output.writeFloat(info.dy)
+                    output.writeFloat(info.dz)
+                    output.writeFloat(info.distance)
                 }
                 output.flush()
             } catch (e: Exception) {
-                Log.e("SocketManager", "Failed to send distances", e)
+                Log.e("SocketManager", "Failed to send distances info", e)
             }
         }
     }
-
 }
