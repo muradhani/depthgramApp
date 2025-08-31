@@ -74,7 +74,7 @@ object FrameProcessor {
 
     }
 
-    fun getDistanceAtPixel(x: Float,y: Float): Float? {
+    fun getDistanceAtPixel(x: Float,y: Float): HashMap<String, Float>? {
         try {
             lastFrame?.let {
                 val cameraPose = it.camera.pose
@@ -94,7 +94,12 @@ object FrameProcessor {
                     val euclideanDistance = sqrt(dx*dx + dy*dy + dz*dz)
 
                     Log.d("ARCore", "Accurate distance: $euclideanDistance meters")
-                    return euclideanDistance
+                    return hashMapOf(
+                        "distance" to euclideanDistance,
+                        "dx" to dx,
+                        "dy" to dy,
+                        "dz" to dz,
+                    )
                 }
             }
 

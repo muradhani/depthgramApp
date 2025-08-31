@@ -77,12 +77,15 @@ object SocketManager {
         }
     }
 
-    fun sendDistance(distance: Float) {
+    fun sendDistance(distance: HashMap<String,Float>) {
         synchronized(writeLock) {
             if (!isConnected) return
             try {
                 output.writeInt(2)
-                output.writeFloat(distance)
+                output.writeFloat(distance.get("distance")!!)
+                output.writeFloat(distance.get("dx")!!)
+                output.writeFloat(distance.get("dy")!!)
+                output.writeFloat(distance.get("dz")!!)
                 output.flush()
             } catch (e: Exception) {
                 Log.e("SocketManager", "Failed to send distance", e)
