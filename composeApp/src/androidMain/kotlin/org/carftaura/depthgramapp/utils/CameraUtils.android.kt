@@ -22,7 +22,8 @@ import com.google.ar.sceneform.ArSceneView
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import org.carftaura.depthgramapp.utils.FrameProcessor.getDistanceAtPixel
+//import org.carftaura.depthgramapp.utils.FrameProcessor.getDistanceAtPixel
+import org.carftaura.depthgramapp.utils.FrameProcessor.getDistancesAtPixels
 
 @SuppressLint("ClickableViewAccessibility")
 @Composable
@@ -89,7 +90,7 @@ actual fun CameraPreview(modifier: Modifier) {
                             val frame = this.arFrame ?: return@setOnTouchListener true
                             if (event.action == android.view.MotionEvent.ACTION_DOWN) {
                                 if (frame.camera.trackingState == TrackingState.TRACKING) {
-                                    logText = "the distance ${getDistanceAtPixel(event.x,event.y)}"
+                                    logText = "the distance "
                                 }else {
                                     logText = "Ar not tracking yet"
                                 }

@@ -23,7 +23,7 @@ object FrameProcessor {
             val cy = intrinsics.principalPoint[1]
             val width = intrinsics.imageDimensions[0]
             val height = intrinsics.imageDimensions[1]
-
+            //Log.d("FrameProcessor", "Image Dimensions: width=$width, height=$height")
             val intrinsicsData = ByteArray(24).apply {
                 val buffer = ByteBuffer.wrap(this).order(ByteOrder.LITTLE_ENDIAN)
                 buffer.putFloat(fx)
@@ -32,6 +32,7 @@ object FrameProcessor {
                 buffer.putFloat(cy)
                 buffer.putInt(width)
                 buffer.putInt(height)
+
             }
 
             intrinsicsData + jpegData
@@ -73,39 +74,74 @@ object FrameProcessor {
         }
 
     }
+    fun getDistancesAtPixels(points: List<Pair<Float, Float>>): List<Map<String, Float>> {
+        val results = mutableListOf<Map<String, Float>>()
 
-    fun getDistanceAtPixel(x: Float,y: Float): HashMap<String, Float>? {
         try {
-            lastFrame?.let {
-                val cameraPose = it.camera.pose
+            lastFrame?.let { frame ->
+                val cameraPose = frame.camera.pose
 
                 val camX = cameraPose.tx()
                 val camY = cameraPose.ty()
                 val camZ = cameraPose.tz()
 
-                val hitResult = it.hitTest(x, y).firstOrNull()
+                for ((x, y) in points) {
+                    val hitResult = frame.hitTest(x, y).firstOrNull()
+                    hitResult?.let {
+                        val hitPose = it.hitPose
+                        val dx = hitPose.tx() - camX
+                        val dy = hitPose.ty() - camY
+                        val dz = hitPose.tz() - camZ
 
-                hitResult?.let {
-                    val hitPose = it.hitPose
-                    val dx = hitPose.tx() - camX
-                    val dy = hitPose.ty() - camY
-                    val dz = hitPose.tz() - camZ
-
-                    val euclideanDistance = sqrt(dx*dx + dy*dy + dz*dz)
-
-                    Log.d("ARCore", "Accurate distance: $euclideanDistance meters")
-                    return hashMapOf(
-                        "distance" to euclideanDistance,
-                        "dx" to dx,
-                        "dy" to dy,
-                        "dz" to dz,
-                    )
+                        val euclideanDistance = sqrt(dx * dx + dy * dy + dz * dz)
+                        Log.d("ARCore", "dz = $dz")
+                        results.add(
+                            mapOf(
+                                "dx" to dx,
+                                "dy" to dy,
+                                "dz" to dz
+                            )
+                        )
+                    }
                 }
             }
-
-        }catch (e: Exception){
-            Log.e("traccking","ditance not av")
+        } catch (e: Exception) {
+            Log.e("tracking", "distance not available: ${e.message}")
         }
-        return null
-    }
-}
+
+        return results
+        /*fun getDistanceAtPixel(x: Float,y: Float): HashMap<String, Float>? {
+            try {
+                lastFrame?.let {
+                    val cameraPose = it.camera.pose
+
+                    val camX = cameraPose.tx()
+                    val camY = cameraPose.ty()
+                    val camZ = cameraPose.tz()
+
+                    val hitResult = it.hitTest(x, y).firstOrNull()
+
+                    hitResult?.let {
+                        val hitPose = it.hitPose
+                        val dx = hitPose.tx() - camX
+                        val dy = hitPose.ty() - camY
+                        val dz = hitPose.tz() - camZ
+
+                        val euclideanDistance = sqrt(dx*dx + dy*dy + dz*dz)
+
+                        Log.d("ARCore", "Accurate distance: $euclideanDistance meters")
+                        return hashMapOf(
+                            "distance" to euclideanDistance,
+                            "dx" to dx,
+                            "dy" to dy,
+                            "dz" to dz,
+                        )
+                    }
+                }
+
+            }catch (e: Exception){
+                Log.e("traccking","ditance not av")
+            }
+            return null
+        }*/
+    }}
