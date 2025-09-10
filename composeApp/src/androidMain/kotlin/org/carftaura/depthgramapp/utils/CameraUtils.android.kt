@@ -71,7 +71,8 @@ actual fun CameraPreview(modifier: Modifier) {
     )
     var latestFrame by remember { mutableStateOf<Frame?>(null) }
 
-
+    var firstPoint: Pair<Float, Float>? by remember { mutableStateOf(null) }
+    var secondPoint: Pair<Float, Float>? by remember { mutableStateOf(null) }
     // UI layout
     Column(modifier = modifier.fillMaxSize()) {
         var arSceneView: ArSceneView? = remember { null }
@@ -90,9 +91,28 @@ actual fun CameraPreview(modifier: Modifier) {
                             val frame = this.arFrame ?: return@setOnTouchListener true
                             if (event.action == android.view.MotionEvent.ACTION_DOWN) {
                                 if (frame.camera.trackingState == TrackingState.TRACKING) {
-                                    logText = "the distance ${calculateTwoPointsDistance(event.x,event.y,event.x,event.y)}"
-                                }else {
-                                    logText = "Ar not tracking yet"
+
+                                    // --- store first & second taps ---
+                                    if (firstPoint == null) {
+                                        firstPoint = Pair(event.x, event.y)
+                                        logText = "First point selected at (${event.x}, ${event.y})"
+                                    } else {
+                                        secondPoint = Pair(event.x, event.y)
+
+                                        // Both points selected → calculate distance
+                                        val distance = calculateTwoPointsDistance(
+                                            firstPoint!!.first, firstPoint!!.second,
+                                            secondPoint!!.first, secondPoint!!.second
+                                        )
+                                        logText = "Distance: $distance meters"
+
+                                        // Reset for next measurement
+                                        firstPoint = null
+                                        secondPoint = null
+                                    }
+
+                                } else {
+                                    logText = "AR not tracking yet"
                                 }
                             }
                             true
