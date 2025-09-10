@@ -5,10 +5,13 @@ import android.graphics.*
 import android.media.Image
 import android.util.Log
 import com.google.ar.core.Frame
+import com.google.ar.core.Plane
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlin.math.abs
 import kotlin.math.sqrt
+import kotlin.math.pow
 
 object FrameProcessor {
     @Volatile
@@ -108,4 +111,92 @@ object FrameProcessor {
         }
         return null
     }
+
+    fun calculateDistanceBetweenScreenPoints(
+        x1: Float, y1: Float,
+        x2: Float, y2: Float
+    ): Float? {
+        lastFrame?.let {
+            val point1 = get3DPointFromScreen(x1, y1, it)
+            val point2 = get3DPointFromScreen(x2, y2, it)
+
+            return if (point1 != null && point2 != null) {
+                calculateDistanceBetween3DPoints(point1, point2)
+            } else {
+                null
+            }
+        }
+       return null
+    }
+
+    fun calculateDistanceBetween3DPoints(point1: Point3D, point2: Point3D): Float {
+        val dx = point2.x - point1.x
+        val dy = point2.y - point1.y
+        val dz = point2.z - point1.z
+
+        return sqrt(dx.pow(2) + dy.pow(2) + dz.pow(2))
+    }
+
+
+    fun getDetailedDistanceInfo(
+        x1: Float, y1: Float,
+        x2: Float, y2: Float
+    ): HashMap<String, Float>? {
+        lastFrame?.let {
+            val point1 = get3DPointFromScreen(x1, y1, it)
+            val point2 = get3DPointFromScreen(x2, y2, it)
+
+            return if (point1 != null && point2 != null) {
+                val dx = point2.x - point1.x
+                val dy = point2.y - point1.y
+                val dz = point2.z - point1.z
+                val distance = sqrt(dx.pow(2) + dy.pow(2) + dz.pow(2))
+
+                hashMapOf(
+                    "distance" to distance,
+                    "dx" to dx,
+                    "dy" to dy,
+                    "dz" to dz,
+                    "abs_dx" to abs(dx),
+                    "abs_dy" to abs(dy),
+                    "abs_dz" to abs(dz),
+                    "point1_x" to point1.x,
+                    "point1_y" to point1.y,
+                    "point1_z" to point1.z,
+                    "point2_x" to point2.x,
+                    "point2_y" to point2.y,
+                    "point2_z" to point2.z
+                )
+            } else {
+                null
+            }
+        }
+        return null
+    }
+
+    fun get3DPointFromScreen(screenX: Float, screenY: Float, frame: Frame): Point3D? {
+        try {
+            val hitResults = frame.hitTest(screenX, screenY)
+
+            // Try to find a hit on a plane first for better accuracy
+            val hitResult = hitResults.firstOrNull { hit ->
+                hit.trackable is Plane && (hit.trackable as Plane).isPoseInPolygon(hit.hitPose)
+            } ?: hitResults.firstOrNull() // Fallback to any hit
+
+            hitResult?.let {
+                val pose = it.hitPose
+                return Point3D(pose.tx(), pose.ty(), pose.tz())
+            }
+        } catch (e: Exception) {
+            // Handle exceptions (e.g., no AR session, invalid frame)
+        }
+        return null
+    }
+    fun calculateTwoPointsDistance(
+        x1: Float, y1: Float,
+        x2: Float, y2: Float
+    ):Float?{
+        return calculateDistanceBetweenScreenPoints(x1 = x1 , y1 = y1, x2 = x2 , y2 = y2)
+    }
 }
+data class Point3D(val x: Float, val y: Float, val z: Float)
