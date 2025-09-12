@@ -23,7 +23,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import org.carftaura.depthgramapp.utils.FrameProcessor.calculateTwoPointsDistance
-import org.carftaura.depthgramapp.utils.FrameProcessor.getDistanceAtPixel
+
 
 @SuppressLint("ClickableViewAccessibility")
 @Composable
@@ -87,6 +87,7 @@ actual fun CameraPreview(modifier: Modifier) {
                         setupSession(session!!)
                         resume()
                         arSceneView = this
+                        FrameProcessor.arSceneView = this
                         this.setOnTouchListener { _, event ->
                             val frame = this.arFrame ?: return@setOnTouchListener true
                             if (event.action == android.view.MotionEvent.ACTION_DOWN) {
