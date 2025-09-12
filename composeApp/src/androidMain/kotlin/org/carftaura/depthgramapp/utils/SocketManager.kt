@@ -30,12 +30,29 @@ object SocketManager {
             input = DataInputStream(socket.getInputStream())
             isConnected = true
             scope.launch {
-                listenForMessages { x, y ->
-                    launch(Dispatchers.Default) {
-                        val distance = FrameProcessor.getDistanceAtPixel(x.toFloat(), y.toFloat())
-                        distance?.let { sendDistance(it) }
+                listenForMessages (
+                    onTouch = { x, y ->
+                        launch(Dispatchers.Default) {
+                            val distance = FrameProcessor.getDistanceAtPixel(x.toFloat(), y.toFloat())
+                            distance?.let { sendDistance(it) }
+                        }
+                    },
+                    calcDistance = { x1, y1, x2, y2 ->
+                        launch(Dispatchers.Default) {
+                            val startPoint = FrameProcessor.normalizedToScreenCoordinates(x1,y1)
+                            val endPoint = FrameProcessor.normalizedToScreenCoordinates(x2,y2)
+                            if (startPoint != null && endPoint != null){
+                                val distance = FrameProcessor
+                                    .calculateTwoPointsDistance(
+                                        startPoint.first,
+                                        startPoint.second,
+                                        endPoint.first,
+                                        endPoint.second)
+                                distance?.let { sendLength(it) }
+                            }
+                        }
                     }
-                }
+                )
             }
             Log.i("SocketManager", "Connected to $HOST:$PORT")
         } catch (e: Exception) {
@@ -57,17 +74,27 @@ object SocketManager {
         }
     }
 
-    suspend fun listenForMessages(onTouch: (Int, Int) -> Unit) {
+    suspend fun listenForMessages(onTouch: (Int, Int) -> Unit,calcDistance: (Float, Float, Float, Float) -> Unit) {
         withContext(Dispatchers.IO){
             try {
                 while (isConnected) {
                     val msgType = input.readInt()
-                    if (msgType == 3) {
-                        val size = input.readInt()
-                        val x = input.readInt()
-                        val y = input.readInt()
-                        Log.e("SocketManagerPC", "on touch x :$x and y $y")
-                        onTouch(x, y)
+                    when(msgType){
+                        3 -> {
+                            val size = input.readInt()
+                            val x = input.readInt()
+                            val y = input.readInt()
+                            Log.e("SocketManagerPC", "on touch x :$x and y $y")
+                            onTouch(x, y)
+                        }
+                        4 -> {
+                            val size = input.readInt()
+                            val x1 = input.readFloat()
+                            val y1 = input.readFloat()
+                            val x2 = input.readFloat()
+                            val y2 = input.readFloat()
+                            calcDistance(x1, y1, x2, y2)
+                        }
                     }
                 }
             } catch (e: Exception) {
@@ -86,6 +113,19 @@ object SocketManager {
                 output.writeFloat(distance.get("dx")!!)
                 output.writeFloat(distance.get("dy")!!)
                 output.writeFloat(distance.get("dz")!!)
+                output.flush()
+            } catch (e: Exception) {
+                Log.e("SocketManager", "Failed to send distance", e)
+            }
+        }
+    }
+
+    fun sendLength(distance:Float) {
+        synchronized(writeLock) {
+            if (!isConnected) return
+            try {
+                output.writeInt(5)
+                output.writeFloat(distance)
                 output.flush()
             } catch (e: Exception) {
                 Log.e("SocketManager", "Failed to send distance", e)
