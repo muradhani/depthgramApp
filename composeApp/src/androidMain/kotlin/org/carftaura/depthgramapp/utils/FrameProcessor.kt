@@ -16,6 +16,7 @@ import kotlin.math.pow
 object FrameProcessor {
     @Volatile
     var lastFrame : Frame? = null
+    private val isLandscape = true
     fun convertFrameToBytes(image: Image,frame: Frame): ByteArray? {
         return try {
             val jpegData = convertYuvToJpeg(image, 80) ?: return null
@@ -198,5 +199,26 @@ object FrameProcessor {
     ):Float?{
         return calculateDistanceBetweenScreenPoints(x1 = x1 , y1 = y1, x2 = x2 , y2 = y2)
     }
+
+    fun normalizedToScreenCoordinates(xNormalized: Float, yNormalized: Float): Pair<Float, Float>? {
+        lastFrame?.let { frame ->
+            val intr = frame.camera.imageIntrinsics
+            val dims = intr.imageDimensions
+            val imgWidth = dims[0].toFloat()
+            val imgHeight = dims[1].toFloat()
+
+            // Defensive clamp just in case values slightly exceed [0..1]
+            val nx = xNormalized.coerceIn(0f, 1f)
+            val ny = yNormalized.coerceIn(0f, 1f)
+
+            val xPixel = nx * imgWidth
+            val yPixel = ny * imgHeight
+
+            Log.d("ARCore", "normalizedToScreen -> nx=$nx ny=$ny => x=$xPixel y=$yPixel (img ${imgWidth}x${imgHeight})")
+            return Pair(xPixel, yPixel)
+        }
+        return null
+    }
+
 }
 data class Point3D(val x: Float, val y: Float, val z: Float)
