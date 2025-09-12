@@ -208,23 +208,6 @@ object FrameProcessor {
         yNormalized: Float
     ): Pair<Float, Float>? {
         lastFrame?.let { frame ->
-            val intr = frame.camera.imageIntrinsics
-            val dims = intr.imageDimensions
-            val imgWidth = dims[0].toFloat()
-            val imgHeight = dims[1].toFloat()
-
-            val nx = xNormalized.coerceIn(0f, 1f)
-            val ny = yNormalized.coerceIn(0f, 1f)
-
-            // --- ROTATION (assume portrait phone, landscape sensor) ---
-            val rotatedNx = ny
-            val rotatedNy = 1f - nx
-
-            // Pixel coordinates in sensor space
-            val xPixel = rotatedNx * imgWidth
-            val yPixel = rotatedNy * imgHeight
-
-            // --- OFFSET CALCULATION: map into actual AR view rect ---
             val location = IntArray(2)
             arSceneView.getLocationOnScreen(location)
             val startX = location[0].toFloat()
@@ -232,14 +215,14 @@ object FrameProcessor {
             val viewWidth = arSceneView.width.toFloat()
             val viewHeight = arSceneView.height.toFloat()
 
-            // Scale from sensor → AR view size
-            val xScreen = startX + (xPixel / imgWidth) * viewWidth
-            val yScreen = startY + (yPixel / imgHeight) * viewHeight
+            // Simply multiply normalized coordinates by view dimensions
+            val xScreen = startX + (xNormalized * viewWidth)
+            val yScreen = startY + (yNormalized * viewHeight)
 
             Log.d(
                 "test-x",
-                "normalizedToScreen -> nx=$nx ny=$ny -> rotated=($rotatedNx,$rotatedNy) " +
-                        "-> sensor=($xPixel,$yPixel) -> screen=($xScreen,$yScreen) " +
+                "normalizedToScreen -> normalized=($xNormalized,$yNormalized) " +
+                        "-> screen=($xScreen,$yScreen) " +
                         "viewRect=[${startX},${startY},${viewWidth}x${viewHeight}]"
             )
 
