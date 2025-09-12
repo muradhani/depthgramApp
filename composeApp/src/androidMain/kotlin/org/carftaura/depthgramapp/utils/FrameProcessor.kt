@@ -6,6 +6,7 @@ import android.media.Image
 import android.util.Log
 import com.google.ar.core.Frame
 import com.google.ar.core.Plane
+import com.google.ar.sceneform.ArSceneView
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -17,6 +18,8 @@ object FrameProcessor {
     @Volatile
     var lastFrame : Frame? = null
     private val isLandscape = true
+
+    lateinit var arSceneView: ArSceneView
     fun convertFrameToBytes(image: Image,frame: Frame): ByteArray? {
         return try {
             val jpegData = convertYuvToJpeg(image, 80) ?: return null
@@ -200,25 +203,51 @@ object FrameProcessor {
         return calculateDistanceBetweenScreenPoints(x1 = x1 , y1 = y1, x2 = x2 , y2 = y2)
     }
 
-    fun normalizedToScreenCoordinates(xNormalized: Float, yNormalized: Float): Pair<Float, Float>? {
+    fun normalizedToScreenCoordinates(
+        xNormalized: Float,
+        yNormalized: Float
+    ): Pair<Float, Float>? {
         lastFrame?.let { frame ->
             val intr = frame.camera.imageIntrinsics
             val dims = intr.imageDimensions
             val imgWidth = dims[0].toFloat()
             val imgHeight = dims[1].toFloat()
 
-            // Defensive clamp just in case values slightly exceed [0..1]
             val nx = xNormalized.coerceIn(0f, 1f)
             val ny = yNormalized.coerceIn(0f, 1f)
 
-            val xPixel = nx * imgWidth
-            val yPixel = ny * imgHeight
+            // --- ROTATION (assume portrait phone, landscape sensor) ---
+            val rotatedNx = ny
+            val rotatedNy = 1f - nx
 
-            Log.d("ARCore", "normalizedToScreen -> nx=$nx ny=$ny => x=$xPixel y=$yPixel (img ${imgWidth}x${imgHeight})")
-            return Pair(xPixel, yPixel)
+            // Pixel coordinates in sensor space
+            val xPixel = rotatedNx * imgWidth
+            val yPixel = rotatedNy * imgHeight
+
+            // --- OFFSET CALCULATION: map into actual AR view rect ---
+            val location = IntArray(2)
+            arSceneView.getLocationOnScreen(location)
+            val startX = location[0].toFloat()
+            val startY = location[1].toFloat()
+            val viewWidth = arSceneView.width.toFloat()
+            val viewHeight = arSceneView.height.toFloat()
+
+            // Scale from sensor → AR view size
+            val xScreen = startX + (xPixel / imgWidth) * viewWidth
+            val yScreen = startY + (yPixel / imgHeight) * viewHeight
+
+            Log.d(
+                "test-x",
+                "normalizedToScreen -> nx=$nx ny=$ny -> rotated=($rotatedNx,$rotatedNy) " +
+                        "-> sensor=($xPixel,$yPixel) -> screen=($xScreen,$yScreen) " +
+                        "viewRect=[${startX},${startY},${viewWidth}x${viewHeight}]"
+            )
+
+            return Pair(xScreen, yScreen)
         }
         return null
     }
+
 
 }
 data class Point3D(val x: Float, val y: Float, val z: Float)
