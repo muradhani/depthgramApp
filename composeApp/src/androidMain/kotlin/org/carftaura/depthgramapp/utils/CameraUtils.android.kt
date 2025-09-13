@@ -69,14 +69,13 @@ actual fun CameraPreview(modifier: Modifier) {
         contract = ActivityResultContracts.RequestPermission(),
         onResult = { granted -> hasCameraPermission = granted }
     )
-    var latestFrame by remember { mutableStateOf<Frame?>(null) }
 
     var firstPoint: Pair<Float, Float>? by remember { mutableStateOf(null) }
     var secondPoint: Pair<Float, Float>? by remember { mutableStateOf(null) }
+    var arSceneView: ArSceneView? by remember { mutableStateOf(null) }
+
     // UI layout
     Column(modifier = modifier.fillMaxSize()) {
-        var arSceneView: ArSceneView? = remember { null }
-
         if (session != null) {
             AndroidView(
                 modifier = Modifier
@@ -92,26 +91,20 @@ actual fun CameraPreview(modifier: Modifier) {
                             val frame = this.arFrame ?: return@setOnTouchListener true
                             if (event.action == android.view.MotionEvent.ACTION_DOWN) {
                                 if (frame.camera.trackingState == TrackingState.TRACKING) {
-
-                                    // --- store first & second taps ---
                                     if (firstPoint == null) {
                                         firstPoint = Pair(event.x, event.y)
                                         logText = "First point selected at (${event.x}, ${event.y})"
+                                        Log.e("test-x", "First point selected at (${event.x}, ${event.y})")
                                     } else {
                                         secondPoint = Pair(event.x, event.y)
-
-                                        // Both points selected → calculate distance
-                                        val distance = calculateTwoPointsDistance(
+                                        val distance = FrameProcessor.calculateTwoPointsDistance(
                                             firstPoint!!.first, firstPoint!!.second,
                                             secondPoint!!.first, secondPoint!!.second
                                         )
                                         logText = "Distance: $distance meters"
-
-                                        // Reset for next measurement
                                         firstPoint = null
                                         secondPoint = null
                                     }
-
                                 } else {
                                     logText = "AR not tracking yet"
                                 }
@@ -122,28 +115,48 @@ actual fun CameraPreview(modifier: Modifier) {
                             val frame = this.arFrame ?: return@addOnUpdateListener
                             FrameProcessor.lastFrame = frame
                             if (frame.camera.trackingState == TrackingState.TRACKING) {
-                                frame.acquireCameraImage()
-                                    .use { cameraImage ->
+                                try {
+                                    frame.acquireCameraImage().use { cameraImage ->
                                         val bytes = FrameProcessor.convertFrameToBytes(cameraImage, frame)
                                         if (bytes != null) {
                                             CoroutineScope(Dispatchers.IO).launch {
                                                 SocketManager.sendImage(bytes)
                                             }
                                         }
-                                        cameraImage.close()
                                     }
+                                } catch (e: Exception) {
+                                    Log.e("ARDepthPreview", "Image processing skipped", e)
+                                }
                             }
                         }
                     }
                 }
             )
+
+            DisposableEffect(Unit) {
+                onDispose {
+                    try {
+                        arSceneView?.pause()
+                        arSceneView?.destroy()
+                        arSceneView = null
+                        FrameProcessor.lastFrame = null
+                        session?.close()
+                        session = null
+                        Log.i("ARDepthPreview", "AR resources cleaned up")
+                    } catch (e: Exception) {
+                        Log.e("ARDepthPreview", "Dispose failed", e)
+                    }
+                }
+            }
         }
-        Text(
-            text = logText,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            style = MaterialTheme.typography.bodyLarge
-        )
+
+//        Text(
+//            text = logText,
+//            modifier = Modifier
+//                .fillMaxWidth()
+//                .padding(16.dp),
+//            style = MaterialTheme.typography.bodyLarge
+//        )
     }
 }
+
