@@ -11,8 +11,11 @@ import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.abs
+import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.sqrt
 import kotlin.math.pow
+import kotlin.math.roundToInt
 
 object FrameProcessor {
     @Volatile
@@ -22,7 +25,25 @@ object FrameProcessor {
     lateinit var arSceneView: ArSceneView
     fun convertFrameToBytes(image: Image,frame: Frame): ByteArray? {
         return try {
-            val jpegData = convertYuvToJpeg(image, 80) ?: return null
+            // Step 1: Convert YUV -> Bitmap
+            val bitmap = imageToBitmap(image) ?: return null
+
+            val viewWidth = arSceneView.width
+            val viewHeight = arSceneView.height
+
+            // Step 2: Rotate & crop according to view FOV
+            val displayRotationDegrees = when (frame.camera.displayOrientedPose.rotationQuaternion) {
+                else -> 0 // TODO: replace with actual display rotation if needed
+            }
+
+            val cropped = cropBitmapToView(bitmap, viewWidth, viewHeight, displayRotationDegrees)
+
+            // Step 3: Convert cropped bitmap -> JPEG bytes
+            val scaledOut = ByteArrayOutputStream()
+            cropped.compress(Bitmap.CompressFormat.JPEG, 80, scaledOut)
+            val jpegData = scaledOut.toByteArray()
+
+            // Step 4: Append intrinsics
             val intrinsics = frame.camera.imageIntrinsics
             val fx = intrinsics.focalLength[0]
             val fy = intrinsics.focalLength[1]
@@ -47,6 +68,72 @@ object FrameProcessor {
             null
         }
     }
+
+// === Helpers ===
+
+    // YUV_420_888 -> Bitmap
+    private fun imageToBitmap(image: Image): Bitmap? {
+        val nv21 = yuvToNv21(image) ?: return null
+        val yuvImage = YuvImage(nv21, ImageFormat.NV21, image.width, image.height, null)
+        val out = ByteArrayOutputStream()
+        yuvImage.compressToJpeg(Rect(0, 0, image.width, image.height), 100, out)
+        val jpegBytes = out.toByteArray()
+        return BitmapFactory.decodeByteArray(jpegBytes, 0, jpegBytes.size)
+    }
+
+    // Crop bitmap to same FOV as ArSceneView
+    private fun cropBitmapToView(src: Bitmap, viewWidth: Int, viewHeight: Int, displayRotationDegrees: Int, centerCrop: Boolean = true): Bitmap {
+        // rotate if necessary
+        val rotated = if (displayRotationDegrees != 0) {
+            val matrix = Matrix().apply { postRotate(displayRotationDegrees.toFloat()) }
+            Bitmap.createBitmap(src, 0, 0, src.width, src.height, matrix, true)
+        } else src
+
+        val bmpW = rotated.width.toFloat()
+        val bmpH = rotated.height.toFloat()
+        val scale = if (centerCrop) {
+            max(viewWidth / bmpW, viewHeight / bmpH)
+        } else {
+            min(viewWidth / bmpW, viewHeight / bmpH)
+        }
+
+        val dispW = bmpW * scale
+        val dispH = bmpH * scale
+        val offsetX = (dispW - viewWidth) / 2f
+        val offsetY = (dispH - viewHeight) / 2f
+
+        val cropLeft = (offsetX / scale).roundToInt().coerceIn(0, rotated.width - 1)
+        val cropTop  = (offsetY / scale).roundToInt().coerceIn(0, rotated.height - 1)
+        val cropW = (viewWidth / scale).roundToInt().coerceIn(0, rotated.width - cropLeft)
+        val cropH = (viewHeight / scale).roundToInt().coerceIn(0, rotated.height - cropTop)
+
+        return Bitmap.createBitmap(rotated, cropLeft, cropTop, cropW, cropH)
+    }
+
+    // YUV planes → NV21
+    private fun yuvToNv21(image: Image): ByteArray? {
+        if (image.format != ImageFormat.YUV_420_888) return null
+        val width = image.width
+        val height = image.height
+        val ySize = width * height
+        val uvSize = width * height / 2
+        val nv21 = ByteArray(ySize + uvSize)
+        val yBuffer = image.planes[0].buffer
+        val uBuffer = image.planes[1].buffer
+        val vBuffer = image.planes[2].buffer
+        yBuffer.get(nv21, 0, ySize)
+        val uBytes = ByteArray(uBuffer.remaining())
+        val vBytes = ByteArray(vBuffer.remaining())
+        uBuffer.get(uBytes)
+        vBuffer.get(vBytes)
+        var pos = ySize
+        for (i in vBytes.indices) {
+            nv21[pos++] = vBytes[i]
+            nv21[pos++] = uBytes[i]
+        }
+        return nv21
+    }
+
 
     private fun convertYuvToJpeg(image: Image, quality: Int): ByteArray? {
         return try {
