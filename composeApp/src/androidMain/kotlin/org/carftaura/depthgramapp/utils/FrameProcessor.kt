@@ -236,29 +236,90 @@ object FrameProcessor {
         }
         return null
     }
+    fun convertRawImageToArViewBytes(
+        image: Image,
+        frame: Frame
+    ): ByteArray? {
+        val imageIntrinsics = frame.camera.imageIntrinsics
+        val textureIntrinsics = frame.camera.textureIntrinsics
+
+        val imageSize = imageIntrinsics.imageDimensions
+        val textureSize = textureIntrinsics.imageDimensions
+        // optional: send imageIntrinsics if needed
+        val intrinsics = frame.camera.imageIntrinsics
+        val fx = intrinsics.focalLength[0]
+        val fy = intrinsics.focalLength[1]
+        val cx = intrinsics.principalPoint[0]
+        val cy = intrinsics.principalPoint[1]
+        val width = intrinsics.imageDimensions[0]
+        val height = intrinsics.imageDimensions[1]
+
+        val intrinsicsData = ByteArray(24).apply {
+            val buffer = ByteBuffer.wrap(this).order(ByteOrder.LITTLE_ENDIAN)
+            buffer.putFloat(fx)
+            buffer.putFloat(fy)
+            buffer.putFloat(cx)
+            buffer.putFloat(cy)
+            buffer.putInt(width)
+            buffer.putInt(height)
+        }
+        // Step 1: Convert YUV -> Bitmap
+        val yuvBytes = yuvToByteArray(image)
+        val yuvImage = YuvImage(yuvBytes, ImageFormat.NV21, image.width, image.height, null)
+
+        val outputStream = ByteArrayOutputStream()
+        yuvImage.compressToJpeg(Rect(0, 0, image.width, image.height), 100, outputStream)
+        val rawBitmap = BitmapFactory.decodeByteArray(outputStream.toByteArray(), 0, outputStream.size())
+
+        // Step 2: Compute scale/crop ratio
+        val scaleX = textureIntrinsics.focalLength[0] / imageIntrinsics.focalLength[0]
+        val scaleY = textureIntrinsics.focalLength[1] / imageIntrinsics.focalLength[1]
+
+        // Step 3: Apply scaling
+        val scaledBitmap = Bitmap.createScaledBitmap(
+            rawBitmap,
+            (rawBitmap.width * scaleX).toInt(),
+            (rawBitmap.height * scaleY).toInt(),
+            true
+        )
+
+        // Step 4: Center crop to match AR preview size
+        val startX = maxOf(0, (scaledBitmap.width - textureSize[0]) / 2)
+        val startY = maxOf(0, (scaledBitmap.height - textureSize[1]) / 2)
+
+        val croppedBitmap = Bitmap.createBitmap(
+            scaledBitmap,
+            startX,
+            startY,
+            minOf(textureSize[0], scaledBitmap.width - startX),
+            minOf(textureSize[1], scaledBitmap.height - startY)
+        )
+
+        // Step 5: Convert back to ByteArray (JPEG format)
+        val finalOutput = ByteArrayOutputStream()
+        croppedBitmap.compress(Bitmap.CompressFormat.JPEG, 100, finalOutput)
+        return intrinsicsData + finalOutput.toByteArray()
+    }
+
+    fun yuvToByteArray(image: Image): ByteArray {
+        val yBuffer = image.planes[0].buffer
+        val uBuffer = image.planes[1].buffer
+        val vBuffer = image.planes[2].buffer
+
+        val ySize = yBuffer.remaining()
+        val uSize = uBuffer.remaining()
+        val vSize = vBuffer.remaining()
+
+        val nv21 = ByteArray(ySize + uSize + vSize)
+
+        yBuffer.get(nv21, 0, ySize)
+        vBuffer.get(nv21, ySize, vSize)
+        uBuffer.get(nv21, ySize + vSize, uSize)
+
+        return nv21
+    }
 
 
 }
-fun calculateFoV(frame: Frame): Pair<Double, Double> {
-    // Get intrinsics of the camera
-    val intrinsics = frame.camera.imageIntrinsics
 
-    // Resolution (width, height in pixels)
-    val resolution = intrinsics.imageDimensions
-    val width = resolution[0].toDouble()
-    val height = resolution[1].toDouble()
-
-    // Focal length (fx, fy in pixels)
-    val focalLength = intrinsics.focalLength
-    val fx = focalLength[0].toDouble()
-    val fy = focalLength[1].toDouble()
-
-    // Calculate horizontal FoV
-    val fovHorizontal = 2.0 * atan(width / (2.0 * fx)) * (180.0 / PI)
-
-    // Calculate vertical FoV
-    val fovVertical = 2.0 * atan(height / (2.0 * fy)) * (180.0 / PI)
-
-    return Pair(fovHorizontal, fovVertical)
-}
 data class Point3D(val x: Float, val y: Float, val z: Float)

@@ -80,7 +80,7 @@ actual fun CameraPreview(modifier: Modifier) {
             AndroidView(
                 modifier = Modifier
                     .weight(1f)
-                    .fillMaxWidth(),
+                    .fillMaxSize(),
                 factory = { ctx ->
                     ArSceneView(ctx).apply {
                         setupSession(session!!)
@@ -117,7 +117,7 @@ actual fun CameraPreview(modifier: Modifier) {
                             if (frame.camera.trackingState == TrackingState.TRACKING) {
                                 try {
                                     frame.acquireCameraImage().use { cameraImage ->
-                                        val bytes = FrameProcessor.convertFrameToBytes(cameraImage, frame)
+                                        val bytes = FrameProcessor.convertRawImageToArViewBytes(cameraImage, frame)
                                         if (bytes != null) {
                                             CoroutineScope(Dispatchers.IO).launch {
                                                 SocketManager.sendImage(bytes)
