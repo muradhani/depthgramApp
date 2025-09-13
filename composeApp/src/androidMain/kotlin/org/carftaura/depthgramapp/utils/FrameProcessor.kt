@@ -18,6 +18,7 @@ import kotlin.math.min
 import kotlin.math.sqrt
 import kotlin.math.pow
 import kotlin.math.roundToInt
+import kotlin.math.tan
 
 object FrameProcessor {
     @Volatile
@@ -136,7 +137,7 @@ object FrameProcessor {
                 null
             }
         }
-       return null
+        return null
     }
 
     fun calculateDistanceBetween3DPoints(point1: Point3D, point2: Point3D): Float {
@@ -240,12 +241,46 @@ object FrameProcessor {
         image: Image,
         frame: Frame
     ): ByteArray? {
-        val imageIntrinsics = frame.camera.imageIntrinsics
-        val textureIntrinsics = frame.camera.textureIntrinsics
+        val imageWidth = image.width
+        val imageHeight = image.height
 
-        val imageSize = imageIntrinsics.imageDimensions
-        val textureSize = textureIntrinsics.imageDimensions
-        // optional: send imageIntrinsics if needed
+        val textureWidth = frame.camera.textureIntrinsics.imageDimensions[0]
+        val textureHeight = frame.camera.textureIntrinsics.imageDimensions[1]
+
+        // Step 1: Convert YUV -> Bitmap
+        val yuvBytes = yuvToByteArray(image)
+        val yuvImage = YuvImage(yuvBytes, ImageFormat.NV21, imageWidth, imageHeight, null)
+        val outputStream = ByteArrayOutputStream()
+        yuvImage.compressToJpeg(Rect(0, 0, imageWidth, imageHeight), 100, outputStream)
+        val rawBitmap = BitmapFactory.decodeByteArray(outputStream.toByteArray(), 0, outputStream.size())
+
+        // Step 2: Compute scale to fully cover the desktop texture
+        val scaleX = textureWidth.toFloat() / imageWidth.toFloat()
+        val scaleY = textureHeight.toFloat() / imageHeight.toFloat()
+        val scale = maxOf(scaleX, scaleY) // ensures no black borders
+
+        val scaledWidth = (imageWidth * scale).toInt()
+        val scaledHeight = (imageHeight * scale).toInt()
+
+        val scaledBitmap = Bitmap.createScaledBitmap(rawBitmap, scaledWidth, scaledHeight, true)
+
+        // Step 3: Center crop to match desktop texture
+        val startX = (scaledWidth - textureWidth) / 2
+        val startY = (scaledHeight - textureHeight) / 2
+
+        val croppedBitmap = Bitmap.createBitmap(
+            scaledBitmap,
+            startX,
+            startY,
+            textureWidth,
+            textureHeight
+        )
+
+        // Step 4: Convert back to JPEG ByteArray
+        val finalOutput = ByteArrayOutputStream()
+        croppedBitmap.compress(Bitmap.CompressFormat.JPEG, 100, finalOutput)
+
+        // Step 5: Prepend intrinsics data
         val intrinsics = frame.camera.imageIntrinsics
         val fx = intrinsics.focalLength[0]
         val fy = intrinsics.focalLength[1]
@@ -263,41 +298,7 @@ object FrameProcessor {
             buffer.putInt(width)
             buffer.putInt(height)
         }
-        // Step 1: Convert YUV -> Bitmap
-        val yuvBytes = yuvToByteArray(image)
-        val yuvImage = YuvImage(yuvBytes, ImageFormat.NV21, image.width, image.height, null)
 
-        val outputStream = ByteArrayOutputStream()
-        yuvImage.compressToJpeg(Rect(0, 0, image.width, image.height), 100, outputStream)
-        val rawBitmap = BitmapFactory.decodeByteArray(outputStream.toByteArray(), 0, outputStream.size())
-
-        // Step 2: Compute scale/crop ratio
-        val scaleX = textureIntrinsics.focalLength[0] / imageIntrinsics.focalLength[0]
-        val scaleY = textureIntrinsics.focalLength[1] / imageIntrinsics.focalLength[1]
-
-        // Step 3: Apply scaling
-        val scaledBitmap = Bitmap.createScaledBitmap(
-            rawBitmap,
-            (rawBitmap.width * scaleX).toInt(),
-            (rawBitmap.height * scaleY).toInt(),
-            true
-        )
-
-        // Step 4: Center crop to match AR preview size
-        val startX = maxOf(0, (scaledBitmap.width - textureSize[0]) / 2)
-        val startY = maxOf(0, (scaledBitmap.height - textureSize[1]) / 2)
-
-        val croppedBitmap = Bitmap.createBitmap(
-            scaledBitmap,
-            startX,
-            startY,
-            minOf(textureSize[0], scaledBitmap.width - startX),
-            minOf(textureSize[1], scaledBitmap.height - startY)
-        )
-
-        // Step 5: Convert back to ByteArray (JPEG format)
-        val finalOutput = ByteArrayOutputStream()
-        croppedBitmap.compress(Bitmap.CompressFormat.JPEG, 100, finalOutput)
         return intrinsicsData + finalOutput.toByteArray()
     }
 
@@ -311,13 +312,13 @@ object FrameProcessor {
         val vSize = vBuffer.remaining()
 
         val nv21 = ByteArray(ySize + uSize + vSize)
-
         yBuffer.get(nv21, 0, ySize)
         vBuffer.get(nv21, ySize, vSize)
         uBuffer.get(nv21, ySize + vSize, uSize)
-
         return nv21
     }
+
+
 
 
 }
