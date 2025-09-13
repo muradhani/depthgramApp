@@ -10,7 +10,9 @@ import com.google.ar.sceneform.ArSceneView
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.atan
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sqrt
@@ -236,5 +238,27 @@ object FrameProcessor {
     }
 
 
+}
+fun calculateFoV(frame: Frame): Pair<Double, Double> {
+    // Get intrinsics of the camera
+    val intrinsics = frame.camera.imageIntrinsics
+
+    // Resolution (width, height in pixels)
+    val resolution = intrinsics.imageDimensions
+    val width = resolution[0].toDouble()
+    val height = resolution[1].toDouble()
+
+    // Focal length (fx, fy in pixels)
+    val focalLength = intrinsics.focalLength
+    val fx = focalLength[0].toDouble()
+    val fy = focalLength[1].toDouble()
+
+    // Calculate horizontal FoV
+    val fovHorizontal = 2.0 * atan(width / (2.0 * fx)) * (180.0 / PI)
+
+    // Calculate vertical FoV
+    val fovVertical = 2.0 * atan(height / (2.0 * fy)) * (180.0 / PI)
+
+    return Pair(fovHorizontal, fovVertical)
 }
 data class Point3D(val x: Float, val y: Float, val z: Float)
