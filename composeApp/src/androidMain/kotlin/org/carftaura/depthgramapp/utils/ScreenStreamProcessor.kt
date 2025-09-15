@@ -83,7 +83,7 @@ object ScreenStreamProcessor {
 
             // Process while image is still open
             val imageData = withContext(Dispatchers.Default) {
-                processImageData(image)
+                convertRgba8888ImageToJpeg(image)
             }
 
             // ✅ Now it’s safe to close
@@ -91,7 +91,9 @@ object ScreenStreamProcessor {
             image = null
 
             withContext(Dispatchers.IO) {
-                SocketManager.sendImage(imageData)
+                imageData?.let {
+                    SocketManager.sendImage(it)
+                }
             }
 
         } catch (e: Exception) {
@@ -100,56 +102,49 @@ object ScreenStreamProcessor {
         }
     }
 
+    private suspend fun convertRgba8888ImageToJpeg(image: Image, quality: Int = 80): ByteArray? {
+        return withContext(Dispatchers.Default) {
+            try {
+                val width = image.width
+                val height = image.height
+                val plane = image.planes[0]
+                val buffer = plane.buffer
+                val pixelStride = plane.pixelStride
+                val rowStride = plane.rowStride
+                val rowPadding = rowStride - pixelStride * width
 
-    // Reusable objects (initialize once at startProjection)
-    private var reusableBitmap: Bitmap? = null
-    private var scaledBitmap: Bitmap? = null
-    private var reusableStream = ByteArrayOutputStream()
-    private var reusableBuffer: ByteBuffer? = null
+                // Create bitmap
+                val bitmap = Bitmap.createBitmap(width + rowPadding / pixelStride, height, Bitmap.Config.ARGB_8888)
 
-    private fun initBuffers(width: Int, height: Int) {
-        if (reusableBitmap == null || reusableBitmap?.width != width || reusableBitmap?.height != height) {
-            reusableBitmap?.recycle()
-            reusableBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                buffer.rewind()
+                val pixels = IntArray((width + rowPadding / pixelStride) * height)
+                var offset = 0
+                for (i in 0 until height) {
+                    for (j in 0 until width) {
+                        val r = buffer.get(offset).toInt() and 0xFF
+                        val g = buffer.get(offset + 1).toInt() and 0xFF
+                        val b = buffer.get(offset + 2).toInt() and 0xFF
+                        val a = buffer.get(offset + 3).toInt() and 0xFF
+                        pixels[i * (width + rowPadding / pixelStride) + j] =
+                            (a shl 24) or (r shl 16) or (g shl 8) or b
+                        offset += pixelStride
+                    }
+                    offset += rowPadding
+                }
 
-            // Optional scaling buffer (half res)
-            scaledBitmap?.recycle()
-            scaledBitmap = Bitmap.createBitmap(width / 2, height / 2, Bitmap.Config.ARGB_8888)
+                bitmap.setPixels(pixels, 0, width + rowPadding / pixelStride, 0, 0, width, height)
 
-            reusableBuffer = ByteBuffer.allocateDirect(width * height * 4) // ARGB_8888 = 4 bytes/pixel
+                // Compress to JPEG
+                val output = ByteArrayOutputStream()
+                bitmap.compress(Bitmap.CompressFormat.JPEG, quality, output)
+                output.toByteArray()
+            } catch (e: Exception) {
+                Log.e("ScreenStream", "Failed to convert RGBA_8888 to JPEG", e)
+                null
+            } finally {
+                image.close()
+            }
         }
-    }
-
-    private fun processImageData(image: Image): ByteArray {
-        val plane = image.planes[0]
-        val width = image.width
-        val height = image.height
-
-        // Ensure reusable buffer is big enough
-        if (reusableBuffer == null || reusableBuffer!!.capacity() < plane.rowStride * height) {
-            reusableBuffer = ByteBuffer.allocateDirect(plane.rowStride * height)
-        }
-        if (reusableBitmap == null || reusableBitmap!!.width != width || reusableBitmap!!.height != height) {
-            reusableBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-        }
-
-        // Copy into reusable buffer
-        val buffer = reusableBuffer!!
-        buffer.clear()
-        buffer.put(plane.buffer)
-        buffer.flip()
-
-        // Copy to bitmap
-        val bitmap = reusableBitmap!!
-        bitmap.copyPixelsFromBuffer(buffer)
-
-        // Compress
-        if (reusableStream == null) reusableStream = ByteArrayOutputStream()
-        val out = reusableStream
-        out.reset()
-        bitmap.compress(Bitmap.CompressFormat.JPEG, 80, out)
-
-        return out.toByteArray()
     }
 
     fun stopProjection() {
