@@ -4,6 +4,7 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.projection.MediaProjectionManager
 import android.util.Log
@@ -83,8 +84,11 @@ actual fun CameraPreview(modifier: Modifier) {
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK && result.data != null) {
-            val mediaProjection = projectionManager.getMediaProjection(result.resultCode, result.data!!)
-            ScreenStreamProcessor.startProjection(mediaProjection, context)
+            val serviceIntent = Intent(context, ScreenCaptureService::class.java).apply {
+                putExtra("resultCode", result.resultCode)
+                putExtra("data", result.data)
+            }
+            ContextCompat.startForegroundService(context, serviceIntent)
         }
     }
 
@@ -101,6 +105,8 @@ actual fun CameraPreview(modifier: Modifier) {
                     .fillMaxSize(),
                 factory = { ctx ->
                     ArSceneView(ctx).apply {
+                        val intent = projectionManager.createScreenCaptureIntent()
+                        projectionLauncher.launch(intent)
                         setupSession(session!!)
                         resume()
                         arSceneView = this
@@ -154,7 +160,6 @@ actual fun CameraPreview(modifier: Modifier) {
             DisposableEffect(Unit) {
                 onDispose {
                     try {
-                        ScreenStreamProcessor.stopProjection()
                         arSceneView?.pause()
                         arSceneView?.destroy()
                         arSceneView = null
