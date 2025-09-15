@@ -2,7 +2,10 @@ package org.carftaura.depthgramapp.utils
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.app.Activity
+import android.content.Context
 import android.content.pm.PackageManager
+import android.media.projection.MediaProjectionManager
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -70,6 +73,21 @@ actual fun CameraPreview(modifier: Modifier) {
         onResult = { granted -> hasCameraPermission = granted }
     )
 
+
+    // 1) Declare projection manager + launcher (Composable scope)
+    val projectionManager = remember {
+        context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+    }
+
+    val projectionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK && result.data != null) {
+            val mediaProjection = projectionManager.getMediaProjection(result.resultCode, result.data!!)
+            ScreenStreamProcessor.startProjection(mediaProjection, context)
+        }
+    }
+
     var firstPoint: Pair<Float, Float>? by remember { mutableStateOf(null) }
     var secondPoint: Pair<Float, Float>? by remember { mutableStateOf(null) }
     var arSceneView: ArSceneView? by remember { mutableStateOf(null) }
@@ -116,14 +134,14 @@ actual fun CameraPreview(modifier: Modifier) {
                             FrameProcessor.lastFrame = frame
                             if (frame.camera.trackingState == TrackingState.TRACKING) {
                                 try {
-                                    frame.acquireCameraImage().use { cameraImage ->
-                                        val bytes = FrameProcessor.convertRawImageToArViewBytes(cameraImage, frame)
-                                        if (bytes != null) {
-                                            CoroutineScope(Dispatchers.IO).launch {
-                                                SocketManager.sendImage(bytes)
-                                            }
-                                        }
-                                    }
+//                                    frame.acquireCameraImage().use { cameraImage ->
+//                                        val bytes = FrameProcessor.convertRawImageToArViewBytes(cameraImage, frame)
+//                                        if (bytes != null) {
+//                                            CoroutineScope(Dispatchers.IO).launch {
+//                                                SocketManager.sendImage(bytes)
+//                                            }
+//                                        }
+//                                    }
                                 } catch (e: Exception) {
                                     Log.e("ARDepthPreview", "Image processing skipped", e)
                                 }
@@ -136,6 +154,7 @@ actual fun CameraPreview(modifier: Modifier) {
             DisposableEffect(Unit) {
                 onDispose {
                     try {
+                        ScreenStreamProcessor.stopProjection()
                         arSceneView?.pause()
                         arSceneView?.destroy()
                         arSceneView = null
