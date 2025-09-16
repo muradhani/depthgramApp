@@ -113,11 +113,11 @@ object ScreenStreamProcessor {
                 val rowStride = plane.rowStride
                 val rowPadding = rowStride - pixelStride * width
 
-                // Create bitmap
-                val bitmap = Bitmap.createBitmap(width + rowPadding / pixelStride, height, Bitmap.Config.ARGB_8888)
+                // ✅ Only use real width/height
+                val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
 
                 buffer.rewind()
-                val pixels = IntArray((width + rowPadding / pixelStride) * height)
+                val pixels = IntArray(width * height)
                 var offset = 0
                 for (i in 0 until height) {
                     for (j in 0 until width) {
@@ -125,14 +125,15 @@ object ScreenStreamProcessor {
                         val g = buffer.get(offset + 1).toInt() and 0xFF
                         val b = buffer.get(offset + 2).toInt() and 0xFF
                         val a = buffer.get(offset + 3).toInt() and 0xFF
-                        pixels[i * (width + rowPadding / pixelStride) + j] =
+                        pixels[i * width + j] =
                             (a shl 24) or (r shl 16) or (g shl 8) or b
                         offset += pixelStride
                     }
                     offset += rowPadding
                 }
 
-                bitmap.setPixels(pixels, 0, width + rowPadding / pixelStride, 0, 0, width, height)
+                // ✅ stride = width (not padded width)
+                bitmap.setPixels(pixels, 0, width, 0, 0, width, height)
 
                 // Compress to JPEG
                 val output = ByteArrayOutputStream()
@@ -146,6 +147,7 @@ object ScreenStreamProcessor {
             }
         }
     }
+
 
     fun stopProjection() {
         isStreaming = false
