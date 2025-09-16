@@ -103,7 +103,7 @@ object ScreenStreamProcessor {
         }
     }
 
-    private suspend fun convertRgba8888ImageToJpeg(image: Image, quality: Int = 80): ByteArray? {
+    private suspend fun convertRgba8888ImageToJpeg(image: Image, quality: Int = 50): ByteArray? {
         return withContext(Dispatchers.Default) {
             try {
                 val width = image.width
