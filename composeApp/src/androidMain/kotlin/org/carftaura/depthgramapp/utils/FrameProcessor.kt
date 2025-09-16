@@ -319,47 +319,48 @@ object FrameProcessor {
     }
 
     fun imagePointToScreen(
-        xImg: Float, yImg: Float,
-        arSceneView: ArSceneView,
-        frame: Frame
+        nx: Float, ny: Float
     ): Pair<Float, Float>? {
-        val imgIntr = frame.camera.imageIntrinsics
-        val texIntr = frame.camera.textureIntrinsics
+        lastFrame?.let { frame ->
+            val imgIntr = frame.camera.imageIntrinsics
+            val texIntr = frame.camera.textureIntrinsics
+            val xImg = nx * imgIntr.imageDimensions[0]
+            val yImg = ny * imgIntr.imageDimensions[1]
+            val imgFx = imgIntr.focalLength[0]
+            val imgFy = imgIntr.focalLength[1]
+            val imgCx = imgIntr.principalPoint[0]
+            val imgCy = imgIntr.principalPoint[1]
 
-        val imgFx = imgIntr.focalLength[0]
-        val imgFy = imgIntr.focalLength[1]
-        val imgCx = imgIntr.principalPoint[0]
-        val imgCy = imgIntr.principalPoint[1]
+            val texFx = texIntr.focalLength[0]
+            val texFy = texIntr.focalLength[1]
+            val texCx = texIntr.principalPoint[0]
+            val texCy = texIntr.principalPoint[1]
+            val texWidth = texIntr.imageDimensions[0]
+            val texHeight = texIntr.imageDimensions[1]
 
-        val texFx = texIntr.focalLength[0]
-        val texFy = texIntr.focalLength[1]
-        val texCx = texIntr.principalPoint[0]
-        val texCy = texIntr.principalPoint[1]
-        val texWidth = texIntr.imageDimensions[0]
-        val texHeight = texIntr.imageDimensions[1]
+            // Step 1: image -> texture normalized
+            val X = (xImg - imgCx) / imgFx
+            val Y = (yImg - imgCy) / imgFy
+            val xTex = X * texFx + texCx
+            val yTex = Y * texFy + texCy
+            val xNorm = xTex / texWidth
+            val yNorm = yTex / texHeight
 
-        // Step 1: image -> texture normalized
-        val X = (xImg - imgCx) / imgFx
-        val Y = (yImg - imgCy) / imgFy
-        val xTex = X * texFx + texCx
-        val yTex = Y * texFy + texCy
-        val xNorm = xTex / texWidth
-        val yNorm = yTex / texHeight
+            // Step 2: normalized -> screen
+            val location = IntArray(2)
+            arSceneView.getLocationOnScreen(location)
+            val startX = location[0].toFloat()
+            val startY = location[1].toFloat()
+            val viewWidth = arSceneView.width.toFloat()
+            val viewHeight = arSceneView.height.toFloat()
 
-        // Step 2: normalized -> screen
-        val location = IntArray(2)
-        arSceneView.getLocationOnScreen(location)
-        val startX = location[0].toFloat()
-        val startY = location[1].toFloat()
-        val viewWidth = arSceneView.width.toFloat()
-        val viewHeight = arSceneView.height.toFloat()
-
-        val xScreen = startX + (xNorm * viewWidth)
-        val yScreen = startY + (yNorm * viewHeight)
-
-        return Pair(xScreen, yScreen)
+            val xScreen = startX + (xNorm * viewWidth)
+            val yScreen = startY + (yNorm * viewHeight)
+            Log.e("frame-result", "last x $xScreen last y $yScreen")
+            return Pair(xScreen, yScreen)
+        }
+        return null
     }
-
 }
 
 data class Point3D(val x: Float, val y: Float, val z: Float)
