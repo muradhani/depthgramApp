@@ -142,8 +142,6 @@ object ScreenStreamProcessor {
             } catch (e: Exception) {
                 Log.e("ScreenStream", "Failed to convert RGBA_8888 to JPEG", e)
                 null
-            } finally {
-                image.close()
             }
         }
     }
