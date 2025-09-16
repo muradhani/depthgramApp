@@ -13,6 +13,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -75,10 +76,12 @@ actual fun CameraPreview(modifier: Modifier) {
     )
 
 
-    // 1) Declare projection manager + launcher (Composable scope)
     val projectionManager = remember {
         context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
     }
+
+    // Save projection permission result
+    var hasProjectionPermission by rememberSaveable { mutableStateOf(false) }
 
     val projectionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -89,9 +92,16 @@ actual fun CameraPreview(modifier: Modifier) {
                 putExtra("data", result.data)
             }
             ContextCompat.startForegroundService(context, serviceIntent)
+            hasProjectionPermission = true
         }
     }
-
+    // ✅ Request screen capture permission only once
+    LaunchedEffect(Unit) {
+        if (!hasProjectionPermission) {
+            val intent = projectionManager.createScreenCaptureIntent()
+            projectionLauncher.launch(intent)
+        }
+    }
     var firstPoint: Pair<Float, Float>? by remember { mutableStateOf(null) }
     var secondPoint: Pair<Float, Float>? by remember { mutableStateOf(null) }
     var arSceneView: ArSceneView? by remember { mutableStateOf(null) }
