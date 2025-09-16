@@ -30,7 +30,8 @@ object ScreenStreamProcessor {
     // Coroutine scope for background processing
     private val processingScope = CoroutineScope(Dispatchers.Default + Job())
     private var processingJob: Job? = null
-
+    private lateinit var handlerThread: HandlerThread
+    private var backgroundHandler: Handler? = null
     fun startProjection(mediaProjection: MediaProjection, context: Context) {
         projection = mediaProjection
         isStreaming = true
@@ -42,9 +43,9 @@ object ScreenStreamProcessor {
 
         // Create ImageReader
         imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 10)
-        val handlerThread = HandlerThread("ScreenCaptureThread")
+        handlerThread = HandlerThread("ScreenCaptureThread")
         handlerThread.start()
-        val backgroundHandler = Handler(handlerThread.looper)
+        backgroundHandler = Handler(handlerThread.looper)
         // Register callback
         projection?.registerCallback(object : MediaProjection.Callback() {
             override fun onStop() {
@@ -155,5 +156,7 @@ object ScreenStreamProcessor {
         virtualDisplay?.release()
         projection?.stop()
         projection = null
+        handlerThread.stop()
+        backgroundHandler = null
     }
 }
