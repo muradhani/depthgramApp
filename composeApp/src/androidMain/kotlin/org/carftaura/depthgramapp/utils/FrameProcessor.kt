@@ -356,7 +356,7 @@ object FrameProcessor {
 
             val xScreen = startX + (xNorm * viewWidth)
             val yScreen = startY + (yNorm * viewHeight)
-            Log.e("frame-result", "last x $xScreen last y $yScreen")
+            Log.e("test-x", "last x $xScreen last y $yScreen")
             return Pair(xScreen, yScreen)
         }
         return null
