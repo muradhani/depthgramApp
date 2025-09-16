@@ -103,49 +103,62 @@ object ScreenStreamProcessor {
         }
     }
 
-    private suspend fun convertRgba8888ImageToJpeg(image: Image, quality: Int = 50): ByteArray? {
-        return withContext(Dispatchers.Default) {
-            try {
-                val width = image.width
-                val height = image.height
-                val plane = image.planes[0]
-                val buffer = plane.buffer
-                val pixelStride = plane.pixelStride
-                val rowStride = plane.rowStride
-                val rowPadding = rowStride - pixelStride * width
+    private var reusableBitmap: Bitmap? = null
+    private var reusablePixels: IntArray? = null
+    private val outputStream = ByteArrayOutputStream()
 
-                // ✅ Only use real width/height
-                val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+    private fun ensureBitmap(width: Int, height: Int): Bitmap {
+        if (reusableBitmap == null ||
+            reusableBitmap?.width != width ||
+            reusableBitmap?.height != height) {
+            reusableBitmap?.recycle()
+            reusableBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        }
+        return reusableBitmap!!
+    }
+    private fun ensurePixels(size: Int): IntArray {
+        if (reusablePixels == null || reusablePixels!!.size < size) {
+            reusablePixels = IntArray(size)
+        }
+        return reusablePixels!!
+    }
+    private fun convertRgba8888ImageToJpeg(image: Image, quality: Int = 50): ByteArray? {
+        try {
+            val width = image.width
+            val height = image.height
+            val plane = image.planes[0]
+            val buffer = plane.buffer
+            val pixelStride = plane.pixelStride
+            val rowStride = plane.rowStride
+            val rowPadding = rowStride - pixelStride * width
 
-                buffer.rewind()
-                val pixels = IntArray(width * height)
-                var offset = 0
-                for (i in 0 until height) {
-                    for (j in 0 until width) {
-                        val r = buffer.get(offset).toInt() and 0xFF
-                        val g = buffer.get(offset + 1).toInt() and 0xFF
-                        val b = buffer.get(offset + 2).toInt() and 0xFF
-                        val a = buffer.get(offset + 3).toInt() and 0xFF
-                        pixels[i * width + j] =
-                            (a shl 24) or (r shl 16) or (g shl 8) or b
-                        offset += pixelStride
-                    }
-                    offset += rowPadding
+            val pixels = ensurePixels(width * height)
+            var offset = 0
+            for (i in 0 until height) {
+                for (j in 0 until width) {
+                    val r = buffer.get(offset).toInt() and 0xFF
+                    val g = buffer.get(offset + 1).toInt() and 0xFF
+                    val b = buffer.get(offset + 2).toInt() and 0xFF
+                    val a = buffer.get(offset + 3).toInt() and 0xFF
+                    pixels[i * width + j] =
+                        (a shl 24) or (r shl 16) or (g shl 8) or b
+                    offset += pixelStride
                 }
-
-                // ✅ stride = width (not padded width)
-                bitmap.setPixels(pixels, 0, width, 0, 0, width, height)
-
-                // Compress to JPEG
-                val output = ByteArrayOutputStream()
-                bitmap.compress(Bitmap.CompressFormat.JPEG, quality, output)
-                output.toByteArray()
-            } catch (e: Exception) {
-                Log.e("ScreenStream", "Failed to convert RGBA_8888 to JPEG", e)
-                null
+                offset += rowPadding
             }
+
+            val bitmap = ensureBitmap(width, height)
+            bitmap.setPixels(pixels, 0, width, 0, 0, width, height)
+
+            outputStream.reset()
+            bitmap.compress(Bitmap.CompressFormat.JPEG, quality, outputStream)
+            return outputStream.toByteArray()
+        } catch (e: Exception) {
+            Log.e("ScreenStream", "Failed to convert RGBA_8888 to JPEG", e)
+            return null
         }
     }
+
 
 
     fun stopProjection() {
