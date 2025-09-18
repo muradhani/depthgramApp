@@ -94,7 +94,7 @@ actual fun CameraPreview(modifier: Modifier) {
                                     if (firstPoint == null) {
                                         firstPoint = Pair(event.x, event.y)
                                         logText = "First point selected at (${event.x}, ${event.y})"
-                                        Log.e("test-x", "First point selected at (${event.x}, ${event.y})")
+                                        Log.e("ImagePointTransform", "First point selected at (${event.x}, ${event.y})")
                                     } else {
                                         secondPoint = Pair(event.x, event.y)
                                         val distance = FrameProcessor.calculateTwoPointsDistance(
@@ -117,7 +117,7 @@ actual fun CameraPreview(modifier: Modifier) {
                             if (frame.camera.trackingState == TrackingState.TRACKING) {
                                 try {
                                     frame.acquireCameraImage().use { cameraImage ->
-                                        val bytes = FrameProcessor.convertRawImageToArViewBytes(cameraImage, frame)
+                                        val bytes = FrameProcessor.convertFrameToBytes(cameraImage, frame)
                                         if (bytes != null) {
                                             CoroutineScope(Dispatchers.IO).launch {
                                                 SocketManager.sendImage(bytes)
