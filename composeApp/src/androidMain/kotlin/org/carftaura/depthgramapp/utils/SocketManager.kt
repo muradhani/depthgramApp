@@ -39,8 +39,8 @@ object SocketManager {
                     },
                     calcDistance = { x1, y1, x2, y2 ->
                         launch(Dispatchers.Default) {
-                            val startPoint = FrameProcessor.imagePointToScreen(x1,y1)
-                            val endPoint = FrameProcessor.imagePointToScreen(x2,y2)
+                            val startPoint = FrameProcessor.imagePointToScreenTransform(x1,y1)
+                            val endPoint = FrameProcessor.imagePointToScreenTransform(x2,y2)
                             if (startPoint != null && endPoint != null){
                                 val distance = FrameProcessor
                                     .calculateTwoPointsDistance(

@@ -4,6 +4,7 @@ package org.carftaura.depthgramapp.utils
 import android.graphics.*
 import android.media.Image
 import android.util.Log
+import com.google.ar.core.Coordinates2d
 import com.google.ar.core.Frame
 import com.google.ar.core.Plane
 import com.google.ar.sceneform.ArSceneView
@@ -361,6 +362,46 @@ object FrameProcessor {
         }
         return null
     }
+    fun imagePointToScreenTransform(nx: Float, ny: Float): Pair<Float, Float>? {
+        lastFrame?.let { frame ->
+            val imgWidth = frame.camera.imageIntrinsics.imageDimensions[0]
+            val imgHeight = frame.camera.imageIntrinsics.imageDimensions[1]
+
+            val xImg = nx * imgWidth
+            val yImg = ny * imgHeight
+
+            Log.d(
+                "ImagePointTransform",
+                "Normalized input = ($nx, $ny), Image dims = ($imgWidth x $imgHeight), " +
+                        "Image coords = ($xImg, $yImg)"
+            )
+
+            val inPoints = floatArrayOf(xImg, yImg)
+            val outPoints = FloatArray(2)
+
+            frame.transformCoordinates2d(
+                Coordinates2d.IMAGE_PIXELS,
+                inPoints,
+                Coordinates2d.VIEW,
+                outPoints
+            )
+
+            val xScreen = outPoints[0]
+            val yScreen = outPoints[1]
+
+            Log.d(
+                "ImagePointTransform",
+                "Transformed to screen coords = ($xScreen, $yScreen)"
+            )
+
+            return Pair(xScreen, yScreen)
+        }
+
+        Log.w("ImagePointTransform", "lastFrame is null, cannot transform")
+        return null
+    }
+
+
 }
 
 data class Point3D(val x: Float, val y: Float, val z: Float)
