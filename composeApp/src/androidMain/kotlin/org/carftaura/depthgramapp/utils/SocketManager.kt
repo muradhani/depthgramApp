@@ -48,6 +48,8 @@ object SocketManager {
                                         startPoint.second,
                                         endPoint.first,
                                         endPoint.second)
+                                Log.e("ImagePointTransform", "the distance between 2 points $distance")
+
                                 distance?.let { sendLength(it) }
                             }
                         }
