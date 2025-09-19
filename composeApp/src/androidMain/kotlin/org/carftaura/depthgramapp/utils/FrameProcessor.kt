@@ -208,7 +208,7 @@ object FrameProcessor {
         x1: Float, y1: Float,
         x2: Float, y2: Float
     ):Float?{
-        return calculateDistanceBetweenScreenPoints(x1 = x1 , y1 = y1, x2 = x2 , y2 = y2)
+        return calculateDistanceBetweenScreenPoints(x1, y1, x2, y2)?.times(100f)
     }
 
     fun normalizedToScreenCoordinates(
