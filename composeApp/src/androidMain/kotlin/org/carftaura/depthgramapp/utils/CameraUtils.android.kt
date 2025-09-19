@@ -23,6 +23,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import org.carftaura.depthgramapp.utils.FrameProcessor.calculateTwoPointsDistance
+import org.carftaura.depthgramapp.utils.FrameProcessor.getDistanceAtPixel
 
 
 @SuppressLint("ClickableViewAccessibility")
@@ -91,20 +92,11 @@ actual fun CameraPreview(modifier: Modifier) {
                             val frame = this.arFrame ?: return@setOnTouchListener true
                             if (event.action == android.view.MotionEvent.ACTION_DOWN) {
                                 if (frame.camera.trackingState == TrackingState.TRACKING) {
-                                    if (firstPoint == null) {
-                                        firstPoint = Pair(event.x, event.y)
-                                        logText = "First point selected at (${event.x}, ${event.y})"
-                                        Log.e("ImagePointTransform", "First point selected at (${event.x}, ${event.y})")
-                                    } else {
-                                        secondPoint = Pair(event.x, event.y)
-                                        val distance = FrameProcessor.calculateTwoPointsDistance(
-                                            firstPoint!!.first, firstPoint!!.second,
-                                            secondPoint!!.first, secondPoint!!.second
-                                        )
-                                        logText = "Distance: $distance meters"
-                                        firstPoint = null
-                                        secondPoint = null
-                                    }
+                                    firstPoint = Pair(event.x, event.y)
+                                    Log.e("ImagePointTransform", "First point selected at (${event.x}, ${event.y})")
+                                    val distance = getDistanceAtPixel(event.x,event.y)
+                                    Log.e("ImagePointTransform", "Distance(${distance})")
+
                                 } else {
                                     logText = "AR not tracking yet"
                                 }
