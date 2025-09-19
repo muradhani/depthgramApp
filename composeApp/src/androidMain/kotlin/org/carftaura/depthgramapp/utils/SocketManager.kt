@@ -35,7 +35,10 @@ object SocketManager {
                         launch(Dispatchers.Default) {
                             FrameProcessor.imagePointToScreenTransform(x,y)?.let { point ->
                                 val distance = FrameProcessor.getDistanceAtPixel(point.first, point.second)
-                                distance?.let { sendDistance(it) }
+                                distance?.let {
+                                    Log.e("ImagePointTransform", "the distance of one point $it")
+                                    sendDistance(it)
+                                }
                             }
                         }
                     },
@@ -51,7 +54,6 @@ object SocketManager {
                                         endPoint.first,
                                         endPoint.second)
                                 Log.e("ImagePointTransform", "the distance between 2 points $distance")
-
                                 distance?.let { sendLength(it) }
                             }
                         }
