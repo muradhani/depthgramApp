@@ -11,7 +11,7 @@ import java.io.DataOutputStream
 import java.net.Socket
 
 object SocketManager {
-    private const val HOST = "192.168.0.203"
+    private const val HOST = "127.0.0.1"
     private const val PORT = 8080
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     lateinit var socket: Socket
