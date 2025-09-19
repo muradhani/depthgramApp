@@ -102,6 +102,7 @@ actual fun CameraPreview(modifier: Modifier) {
                                             secondPoint!!.first, secondPoint!!.second
                                         )
                                         Log.e("ImagePointTransform", "second point selected at (${event.x}, ${event.y})")
+                                        Log.e("ImagePointTransform", "distance $distance")
                                         logText = "Distance: $distance meters"
                                         firstPoint = null
                                         secondPoint = null
