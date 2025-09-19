@@ -37,7 +37,7 @@ object FrameProcessor {
             val cy = intrinsics.principalPoint[1]
             val width = intrinsics.imageDimensions[0]
             val height = intrinsics.imageDimensions[1]
-
+            Log.d("Intrinsics", "fx=$fx, fy=$fy, cx=$cx, cy=$cy, width=$width, height=$height")
             val intrinsicsData = ByteArray(24).apply {
                 val buffer = ByteBuffer.wrap(this).order(ByteOrder.LITTLE_ENDIAN)
                 buffer.putFloat(fx)
