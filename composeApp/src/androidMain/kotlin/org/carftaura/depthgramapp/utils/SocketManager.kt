@@ -33,8 +33,10 @@ object SocketManager {
                 listenForMessages (
                     onTouch = { x, y ->
                         launch(Dispatchers.Default) {
-                            val distance = FrameProcessor.getDistanceAtPixel(x.toFloat(), y.toFloat())
-                            distance?.let { sendDistance(it) }
+                            FrameProcessor.imagePointToScreenTransform(x,y)?.let { point ->
+                                val distance = FrameProcessor.getDistanceAtPixel(point.first, point.second)
+                                distance?.let { sendDistance(it) }
+                            }
                         }
                     },
                     calcDistance = { x1, y1, x2, y2 ->
@@ -76,7 +78,7 @@ object SocketManager {
         }
     }
 
-    suspend fun listenForMessages(onTouch: (Int, Int) -> Unit,calcDistance: (Float, Float, Float, Float) -> Unit) {
+    suspend fun listenForMessages(onTouch: (Float, Float) -> Unit, calcDistance: (Float, Float, Float, Float) -> Unit) {
         withContext(Dispatchers.IO){
             try {
                 while (isConnected) {
@@ -84,8 +86,8 @@ object SocketManager {
                     when(msgType){
                         3 -> {
                             val size = input.readInt()
-                            val x = input.readInt()
-                            val y = input.readInt()
+                            val x = input.readFloat()
+                            val y = input.readFloat()
                             Log.e("SocketManagerPC", "on touch x :$x and y $y")
                             onTouch(x, y)
                         }
