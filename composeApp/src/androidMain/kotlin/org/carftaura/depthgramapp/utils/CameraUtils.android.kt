@@ -22,7 +22,8 @@ import com.google.ar.sceneform.ArSceneView
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import org.carftaura.depthgramapp.utils.FrameProcessor.calculateTwoPointsDistance
+import org.carftaura.depthgramapp.ui.StereoCameraPreview
+
 
 
 @SuppressLint("ClickableViewAccessibility")
@@ -162,3 +163,7 @@ actual fun CameraPreview(modifier: Modifier) {
     }
 }
 
+@Composable
+actual fun stereoCameraPreview(modifier: Modifier) {
+    StereoCameraPreview()
+}

@@ -5,3 +5,6 @@ import androidx.compose.ui.Modifier
 
 @Composable
 expect fun CameraPreview(modifier: Modifier)
+
+@Composable
+expect fun stereoCameraPreview(modifier: Modifier)

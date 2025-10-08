@@ -192,3 +192,8 @@ class CameraPreviewView : UIView(frame =  CGRectMake(0.0, 0.0, 0.0, 0.0)) {
         previewLayer.removeFromSuperlayer()
     }
 }
+
+@Composable
+actual fun stereoCameraPreview(modifier: Modifier) {
+
+}
