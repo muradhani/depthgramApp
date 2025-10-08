@@ -11,18 +11,22 @@ import android.media.ImageReader
 import android.os.Handler
 import android.util.Log
 import android.util.Size
+import kotlinx.coroutines.*
 import java.util.concurrent.Executors
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 import kotlin.math.abs
 
 class StereoCameraHandler(
     private val context: Context,
     private val cameraHandler: Handler,
     private val onFramesReady: (
-        leftImage: Image, 
-        rightImage: Image, 
-        leftIntrinsics: FloatArray?, 
+        leftImage: Image,
+        rightImage: Image,
+        leftIntrinsics: FloatArray?,
         rightIntrinsics: FloatArray?
-    ) -> Unit
+    ) -> Unit,
+    private val onStatusUpdate: (String) -> Unit
 ) {
 
     private val cameraManager by lazy {
@@ -42,19 +46,56 @@ class StereoCameraHandler(
     private var leftCameraIntrinsics: FloatArray? = null
     private var rightCameraIntrinsics: FloatArray? = null
 
+    private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     @SuppressLint("MissingPermission")
     fun openStereoCamera() {
-        val logicalCameraId = findLogicalCameraId()
-        if (logicalCameraId == null) {
-            Log.e("StereoCameraHandler", "No logical multi-camera found.")
-            return
-        }
+        scope.launch(Dispatchers.IO) {
+            try {
+                onStatusUpdate("Searching for logical camera...")
+                val logicalCameraId = findLogicalCameraId() ?: throw IllegalStateException("No logical multi-camera found on this device.")
 
+                onStatusUpdate("Opening camera $logicalCameraId...")
+                cameraDevice = openCameraDevice(logicalCameraId)
+
+                onStatusUpdate("Creating capture session...")
+                captureSession = createCaptureSession(cameraDevice!!)
+
+                onStatusUpdate("Starting stream...")
+                startStreaming()
+                onStatusUpdate("Streaming started.")
+            } catch (e: Exception) {
+                val errorMessage = e.message ?: "An unknown error occurred."
+                Log.e("StereoCameraHandler", "Failed to open stereo camera: $errorMessage", e)
+                onStatusUpdate("Error: $errorMessage")
+            }
+        }
+    }
+
+    private suspend fun openCameraDevice(cameraId: String): CameraDevice = suspendCancellableCoroutine { continuation ->
         try {
-            cameraManager.openCamera(logicalCameraId, stateCallback, cameraHandler)
+            cameraManager.openCamera(cameraId, object : CameraDevice.StateCallback() {
+                override fun onOpened(camera: CameraDevice) {
+                    if (continuation.isActive) continuation.resume(camera)
+                }
+
+                override fun onDisconnected(camera: CameraDevice) {
+                    camera.close()
+                }
+
+                override fun onError(camera: CameraDevice, error: Int) {
+                    if (continuation.isActive) {
+                        continuation.resumeWithException(CameraAccessException(error, "Camera device error: $error"))
+                    }
+                    camera.close()
+                }
+            }, cameraHandler)
+
+            continuation.invokeOnCancellation { 
+                cameraDevice?.close()
+            }
         } catch (e: CameraAccessException) {
-            Log.e("StereoCameraHandler", "Failed to open camera", e)
+            continuation.resumeWithException(e)
         }
     }
 
@@ -76,86 +117,57 @@ class StereoCameraHandler(
         return null
     }
 
-    private val stateCallback = object : CameraDevice.StateCallback() {
-        override fun onOpened(camera: CameraDevice) {
-            cameraDevice = camera
-            createCaptureSession()
-        }
-
-        override fun onDisconnected(camera: CameraDevice) {
-            camera.close()
-            cameraDevice = null
-        }
-
-        override fun onError(camera: CameraDevice, error: Int) {
-            camera.close()
-            cameraDevice = null
-            Log.e("StereoCameraHandler", "Camera device error: $error")
-        }
-    }
-
     @SuppressLint("NewApi")
-    private fun createCaptureSession() {
-        val cameraDevice = cameraDevice ?: return
-        try {
-            val characteristics = cameraManager.getCameraCharacteristics(cameraDevice.id)
-            val physicalCameraIds = characteristics.physicalCameraIds
-            if (physicalCameraIds.size < 2) {
-                Log.e("StereoCameraHandler", "Logical camera does not have at least 2 physical cameras")
-                return
-            }
+    private suspend fun createCaptureSession(device: CameraDevice): CameraCaptureSession = suspendCancellableCoroutine { continuation ->
+        val characteristics = cameraManager.getCameraCharacteristics(device.id)
+        val physicalCameraIds = characteristics.physicalCameraIds
+        if (physicalCameraIds.size < 2) {
+            throw IllegalStateException("Logical camera does not have at least 2 physical cameras")
+        }
 
-            // For simplicity, let's take the first two physical cameras
-            val leftCameraId = physicalCameraIds.elementAt(0)
-            val rightCameraId = physicalCameraIds.elementAt(1)
+        val leftCameraId = physicalCameraIds.elementAt(0)
+        val rightCameraId = physicalCameraIds.elementAt(1)
 
-            val leftCharacteristics = cameraManager.getCameraCharacteristics(leftCameraId)
-            leftCameraIntrinsics = leftCharacteristics.get(CameraCharacteristics.LENS_INTRINSIC_CALIBRATION)
+        val leftCharacteristics = cameraManager.getCameraCharacteristics(leftCameraId)
+        leftCameraIntrinsics = leftCharacteristics.get(CameraCharacteristics.LENS_INTRINSIC_CALIBRATION)
 
-            val rightCharacteristics = cameraManager.getCameraCharacteristics(rightCameraId)
-            rightCameraIntrinsics = rightCharacteristics.get(CameraCharacteristics.LENS_INTRINSIC_CALIBRATION)
+        val rightCharacteristics = cameraManager.getCameraCharacteristics(rightCameraId)
+        rightCameraIntrinsics = rightCharacteristics.get(CameraCharacteristics.LENS_INTRINSIC_CALIBRATION)
 
+        val leftStreamMap = leftCharacteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
+        val outputSize = leftStreamMap?.getOutputSizes(ImageFormat.YUV_420_888)?.firstOrNull() ?: Size(640, 480)
 
-            val leftStreamMap = leftCharacteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
+        leftImageReader = ImageReader.newInstance(outputSize.width, outputSize.height, ImageFormat.YUV_420_888, 2).apply {
+            setOnImageAvailableListener(leftImageListener, imageProcessorHandler)
+        }
+        rightImageReader = ImageReader.newInstance(outputSize.width, outputSize.height, ImageFormat.YUV_420_888, 2).apply {
+            setOnImageAvailableListener(rightImageListener, imageProcessorHandler)
+        }
 
-            // A very simple selection of size. A real app should check for common sizes.
-            val outputSize = leftStreamMap?.getOutputSizes(ImageFormat.YUV_420_888)?.firstOrNull() ?: Size(640, 480)
+        val leftOutputConfig = OutputConfiguration(leftImageReader!!.surface).apply { setPhysicalCameraId(leftCameraId) }
+        val rightOutputConfig = OutputConfiguration(rightImageReader!!.surface).apply { setPhysicalCameraId(rightCameraId) }
 
-            leftImageReader = ImageReader.newInstance(outputSize.width, outputSize.height, ImageFormat.YUV_420_888, 2).apply {
-                setOnImageAvailableListener(leftImageListener, imageProcessorHandler)
-            }
-            rightImageReader = ImageReader.newInstance(outputSize.width, outputSize.height, ImageFormat.YUV_420_888, 2).apply {
-                setOnImageAvailableListener(rightImageListener, imageProcessorHandler)
-            }
+        val sessionConfig = SessionConfiguration(
+            SessionConfiguration.SESSION_REGULAR,
+            listOf(leftOutputConfig, rightOutputConfig),
+            Executors.newSingleThreadExecutor(),
+            object : CameraCaptureSession.StateCallback() {
+                override fun onConfigured(session: CameraCaptureSession) {
+                    if (continuation.isActive) continuation.resume(session)
+                }
 
-
-            val leftOutputConfig = OutputConfiguration(leftImageReader!!.surface)
-            leftOutputConfig.setPhysicalCameraId(leftCameraId)
-
-            val rightOutputConfig = OutputConfiguration(rightImageReader!!.surface)
-            rightOutputConfig.setPhysicalCameraId(rightCameraId)
-
-            val sessionExecutor = Executors.newSingleThreadExecutor()
-
-            val sessionConfig = SessionConfiguration(
-                SessionConfiguration.SESSION_REGULAR,
-                listOf(leftOutputConfig, rightOutputConfig),
-                sessionExecutor,
-                object : CameraCaptureSession.StateCallback() {
-                    override fun onConfigured(session: CameraCaptureSession) {
-                        captureSession = session
-                        startStreaming()
-                    }
-
-                    override fun onConfigureFailed(session: CameraCaptureSession) {
-                        Log.e("StereoCameraHandler", "Failed to configure capture session")
+                override fun onConfigureFailed(session: CameraCaptureSession) {
+                    if (continuation.isActive) {
+                        continuation.resumeWithException(IllegalStateException("Failed to configure capture session"))
                     }
                 }
-            )
-            cameraDevice.createCaptureSession(sessionConfig)
+            }
+        )
 
+        try {
+            device.createCaptureSession(sessionConfig)
         } catch (e: CameraAccessException) {
-            Log.e("StereoCameraHandler", "Failed to create capture session", e)
+            continuation.resumeWithException(e)
         }
     }
 
@@ -177,12 +189,10 @@ class StereoCameraHandler(
         val image = reader.acquireLatestImage() ?: return@OnImageAvailableListener
         synchronized(frameSync) {
             if (rightImage != null && rightImage!!.timestamp < image.timestamp) {
-                // Stale right image, drop it
                 rightImage?.close()
                 rightImage = null
             }
             if (leftImage != null) {
-                // If a left image is already pending, close it before assigning the new one
                 leftImage?.close()
             }
             leftImage = image
@@ -194,12 +204,10 @@ class StereoCameraHandler(
         val image = reader.acquireLatestImage() ?: return@OnImageAvailableListener
         synchronized(frameSync) {
             if (leftImage != null && leftImage!!.timestamp < image.timestamp) {
-                // Stale left image, drop it
                 leftImage?.close()
                 leftImage = null
             }
             if (rightImage != null) {
-                // If a right image is already pending, close it before assigning the new one
                 rightImage?.close()
             }
             rightImage = image
@@ -209,8 +217,6 @@ class StereoCameraHandler(
 
     private fun checkAndProcessFrames() {
         if (leftImage != null && rightImage != null) {
-            // A simple sync mechanism. A more robust solution would check timestamps
-            // and handle cases where one stream is faster than the other.
             if (abs(leftImage!!.timestamp - rightImage!!.timestamp) < 30_000_000) { // 30ms tolerance
                 onFramesReady(leftImage!!, rightImage!!, leftCameraIntrinsics, rightCameraIntrinsics)
                 leftImage = null
@@ -221,6 +227,7 @@ class StereoCameraHandler(
 
 
     fun close() {
+        scope.cancel()
         captureSession?.stopRepeating()
         captureSession?.close()
         captureSession = null
