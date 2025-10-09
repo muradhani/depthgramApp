@@ -7,6 +7,7 @@ import android.util.Log
 import com.google.ar.core.Coordinates2d
 import com.google.ar.core.Frame
 import com.google.ar.core.Plane
+import com.google.ar.core.TrackingState
 import com.google.ar.sceneform.ArSceneView
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
@@ -186,24 +187,81 @@ object FrameProcessor {
         return null
     }
 
-    fun get3DPointFromScreen(screenX: Float, screenY: Float, frame: Frame): Point3D? {
-        try {
-            val hitResults = frame.hitTest(screenX, screenY)
 
-            // Try to find a hit on a plane first for better accuracy
-            val hitResult = hitResults.firstOrNull { hit ->
-                hit.trackable is Plane && (hit.trackable as Plane).isPoseInPolygon(hit.hitPose)
-            } ?: hitResults.firstOrNull() // Fallback to any hit
 
-            hitResult?.let {
-                val pose = it.hitPose
-                return Point3D(pose.tx(), pose.ty(), pose.tz())
+    /**
+     * Maps a touch in Android VIEW pixels to a 3D WORLD-space point using ARCore Depth.
+     *
+     * Requirements:
+     * - Use the SAME Frame that was used to obtain the screen point (avoid frame mismatch).
+     * - Session config must enable depth: Config.DepthMode.AUTOMATIC.
+     * - Returns null if tracking is not active or depth is invalid at that pixel.
+     */
+    fun get3DPointFromScreen(
+        screenX: Float,
+        screenY: Float,
+        frame: Frame
+    ): Point3D? {
+        val camera = frame.camera
+        if (camera.trackingState != TrackingState.TRACKING) return null
+
+        return try {
+            // 1) VIEW (pixels) -> TEXTURE_NORMALIZED (u,v in [0,1]) to index the depth texture correctly
+            val inView = floatArrayOf(screenX, screenY)
+            val uv = FloatArray(2)
+            frame.transformCoordinates2d(
+                Coordinates2d.VIEW, inView,
+                Coordinates2d.TEXTURE_NORMALIZED, uv
+            )
+
+            frame.acquireDepthImage16Bits().use { depthImage ->
+                // 2) Convert normalized UV -> integer texel coords in the depth image
+                val w = depthImage.width
+                val h = depthImage.height
+                // Clamp for safety, then scale to texels
+                val uu = (uv[0].coerceIn(0f, 1f) * (w - 1)).roundToInt()
+                val vv = (uv[1].coerceIn(0f, 1f) * (h - 1)).roundToInt()
+                if (uu !in 0 until w || vv !in 0 until h) return null
+
+                // 3) Read DEPTH16 (millimeters) respecting rowStride & pixelStride
+                val plane = depthImage.planes[0]
+                val rowStride = plane.rowStride            // bytes per row
+                val pixelStride = plane.pixelStride        // bytes per pixel (usually 2, but don't assume)
+                val buffer = plane.buffer.order(ByteOrder.LITTLE_ENDIAN)
+                val byteIndex = vv * rowStride + uu * pixelStride
+                val depthMm = buffer.getShort(byteIndex).toInt() and 0xFFFF
+                if (depthMm == 0) return null // 0 => invalid depth at this pixel (no measurement)
+                val depthM = depthMm / 1000f
+
+                // 4) VIEW -> IMAGE_PIXELS so we can use camera.imageIntrinsics for pinhole unprojection
+                val imagePx = FloatArray(2)
+                frame.transformCoordinates2d(
+                    Coordinates2d.VIEW, inView,
+                    Coordinates2d.IMAGE_PIXELS, imagePx
+                )
+
+                val intr = camera.imageIntrinsics
+                val fx = intr.focalLength[0]
+                val fy = intr.focalLength[1]
+                val cx = intr.principalPoint[0]
+                val cy = intr.principalPoint[1]
+
+                // 5) Unproject to CAMERA space (pinhole model)
+                val xCam = (imagePx[0] - cx) * depthM / fx
+                val yCam = (imagePx[1] - cy) * depthM / fy
+                val zCam = depthM
+
+                // 6) CAMERA -> WORLD space (ARCore camera looks along -Z, hence -z)
+                val camPoint = floatArrayOf(xCam, yCam, -zCam)
+                val world = camera.pose.transformPoint(camPoint)
+
+                Point3D(world[0], world[1], world[2])
             }
-        } catch (e: Exception) {
-            // Handle exceptions (e.g., no AR session, invalid frame)
+        } catch (_: Exception) {
+            null
         }
-        return null
     }
+
     fun calculateTwoPointsDistance(
         x1: Float, y1: Float,
         x2: Float, y2: Float
